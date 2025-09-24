@@ -1,0 +1,66 @@
+# SatRain Models
+
+A collection of ML model implementations for the SatRain dataset.
+
+## Overview
+
+This project provides a Python package `satrain_models` with utility functions and a collection of model implementations in the `models/` directory. Each model implementation is organized in its own folder with conda-compatible requirements.
+
+## Installation
+
+Install the package in development mode:
+
+```bash
+pip install -e .
+```
+
+For development dependencies:
+
+```bash
+pip install -e .[dev]
+```
+
+## Package Structure
+
+```
+satrain_models/
+├── satrain_models/          # Main Python package with utilities
+├── models/                  # Model implementations
+│   ├── model_name_1/       # Each model in its own folder
+│   │   ├── requirements.txt # Conda-compatible requirements
+│   │   └── ...             # Model-specific files
+│   └── model_name_2/
+│       ├── requirements.txt
+│       └── ...
+├── pyproject.toml          # Package configuration
+├── LICENSE                 # MIT License
+└── README.md              # This file
+```
+
+## Adding a Model
+
+To add a new model implementation:
+
+1. Create a new folder in `models/` with your model name
+2. Add a `requirements.txt` file with conda-compatible dependencies
+3. Implement your model using the folder as you see fit
+4. Ensure the requirements can be installed with: `conda install --file requirements.txt`
+
+## Model Requirements Format
+
+Each model folder must contain a `requirements.txt` file that can be installed with conda. Example format:
+
+```
+numpy>=1.20.0
+torch>=1.9.0
+torchvision>=0.10.0
+scikit-learn>=1.0.0
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Each contributor is free to organize their model folder as they see fit, as long as the `requirements.txt` requirement is met.
