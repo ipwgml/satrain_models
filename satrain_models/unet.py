@@ -1,9 +1,17 @@
+"""
+satrain_models.unet
+===================
+
+Provides an implementation of a basic PyTorch UNet.
+"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class DoubleConv(nn.Module):
+    """
+    Convolution block consisting of two convolution, block, ReLU sequences.
+    """
     def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
         if not mid_channels:
@@ -22,6 +30,9 @@ class DoubleConv(nn.Module):
 
 
 class Down(nn.Module):
+    """
+    Downsampling block.
+    """
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
@@ -34,6 +45,9 @@ class Down(nn.Module):
 
 
 class Up(nn.Module):
+    """
+    Upsampling using bilinear or transpose convolution.
+    """
     def __init__(self, in_channels, out_channels, bilinear=True):
         super().__init__()
 
@@ -58,6 +72,9 @@ class Up(nn.Module):
 
 
 class OutConv(nn.Module):
+    """
+    Final output convolution layers.
+    """
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
@@ -67,6 +84,9 @@ class OutConv(nn.Module):
 
 
 class UNet(nn.Module):
+    """
+    A basic UNet encoder-decoder consisting of stem, four encoder stages, and four decoder stages.
+    """
     def __init__(self, n_channels, n_outputs, bilinear=False):
         super(UNet, self).__init__()
         self.n_channels = n_channels
