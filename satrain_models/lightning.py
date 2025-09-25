@@ -16,6 +16,7 @@ from torch.optim.lr_scheduler import _LRScheduler, CosineAnnealingWarmRestarts
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from torchmetrics import MeanSquaredError, MeanAbsoluteError
+import xarray as xr
 
 from satrain_models.metrics import CorrelationCoef, PlotSamples
 

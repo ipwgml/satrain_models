@@ -24,17 +24,14 @@ pip install -e .[dev]
 
 ```
 satrain_models/
-├── satrain_models/          # Main Python package with utilities
-├── models/                  # Model implementations
-│   ├── model_name_1/       # Each model in its own folder
-│   │   ├── requirements.txt # Conda-compatible requirements
-│   │   └── ...             # Model-specific files
-│   └── model_name_2/
-│       ├── requirements.txt
-│       └── ...
-├── pyproject.toml          # Package configuration
-├── LICENSE                 # MIT License
-└── README.md              # This file
+├── satrain_models/          # Python package with PyTorch models and utilities
+└── models/                  # Model implementations
+    ├── model_name_1/       # Each model in its own folder
+    │   ├── requirements.txt # Conda-compatible requirements
+    │   └── ...             # Model-specific files
+    └── model_name_2/
+        ├── requirements.txt
+        └── ...
 ```
 
 ## Adding a Model
@@ -43,7 +40,7 @@ To add a new model implementation:
 
 1. Create a new folder in `models/` with your model name
 2. Add a `requirements.txt` file with conda-compatible dependencies
-3. Implement your model using the folder as you see fit
+3. Implement ``train.py`` and ``test.py`` scripts that train the model and evaluate it on the testing data, respectively
 4. Ensure the requirements can be installed with: `conda install --file requirements.txt`
 
 ## Model Requirements Format
