@@ -1,0 +1,25 @@
+# Compute Configuration for Training
+[compute]
+# === Hardware Configuration ===
+accelerator = "gpu"          # "cpu", "gpu", "mps", "auto"
+devices = 1                  # Number of devices to use (1 for single GPU)
+precision = "bf16"             # "16", "bf16", "32", "16-mixed"
+
+# === Training Configuration ===
+max_epochs = 100              # Maximum training epochs
+batch_size = 32               # Training batch size
+approach = "adamw_simple"    # "sgd_simple", "adamw_simple", "adamw_cosine"
+loss = "mse"                 # "mse", "mae", "huber"
+
+# === Data Loading ===
+num_workers = 4              # Data loader workers
+pin_memory = true            # Pin memory for faster GPU transfer
+persistent_workers = false   # Keep workers alive between epochs
+
+# === Training Control ===
+accumulate_grad_batches = 1  # Gradient accumulation batches
+log_every_n_steps = 10       # Log metrics every N steps
+check_val_every_n_epoch = 1  # Validate every N epochs
+
+# === Logging & Output ===
+output_dir = "./lightning_logs"     # Output directory for logs and checkpoints
