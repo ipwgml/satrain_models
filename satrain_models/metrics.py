@@ -4,6 +4,7 @@ satrain_models.metrics
 
 Provides metrics to log the training progress of PyTorch models.
 """
+
 import logging
 
 from lightning import LightningModule
@@ -23,6 +24,7 @@ class ScalarMetric:
     """
     Defines generic loggin functionality.
     """
+
     def __init__(self):
         self.shape = ()
 
@@ -45,6 +47,7 @@ class ScalarMetric:
         lightning_module.log(
             name, value, on_step=False, on_epoch=True, sync_dist=sync_dist
         )
+
 
 class CorrelationCoef(ScalarMetric, tm.Metric):
     """
@@ -97,7 +100,6 @@ class CorrelationCoef(ScalarMetric, tm.Metric):
         self.y += (target * weights).sum()
         self.y2 += ((target**2) * weights).sum()
         self.counts += weights.sum()
-
 
     def compute(self) -> torch.Tensor:
         """

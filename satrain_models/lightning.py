@@ -4,6 +4,7 @@ satrain_models.lightning
 
 Provides a LightningModule implementing three training recipes.
 """
+
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -14,7 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler, CosineAnnealingWarmRestarts
 
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from torchmetrics import MeanSquaredError, MeanAbsoluteError, CorrcoefCorrCoef
+from torchmetrics import MeanSquaredError, MeanAbsoluteError
 
 from satrain_models.metrics import CorrelationCoef, PlotSamples
 
@@ -32,6 +33,7 @@ class SatRainEstimationModule(L.LightningModule):
       - val/loss, val/mse, val/mae, val/corrcoef
       - lr (current learning rate of the first param group)
     """
+
     def __init__(
         self,
         model: nn.Module,
@@ -55,28 +57,27 @@ class SatRainEstimationModule(L.LightningModule):
         self.val_corrcoef = CorrelationCoef()
         self.plot_samples = PlotSamples()
 
-
     def _compute_finite_loss(self, pred: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """ Compute loss only over finite values (no NaN or inf).
-        
+        """Compute loss only over finite values (no NaN or inf).
+
         Args:
             pred: Predictions tensor
             y: Target tensor
-            
+
         Returns:
             Loss computed only over finite values, or zero if no finite values exist
         """
         # Create mask for finite values in both prediction and target
         mask = torch.isfinite(pred) & torch.isfinite(y)
-        
+
         # If no finite values, return zero loss (prevents NaN gradients)
         if not mask.any():
             return torch.tensor(0.0, device=y.device, requires_grad=True)
-        
+
         # Compute loss only over finite values
         pred_masked = pred[mask]
         y_masked = y[mask]
-        
+
         return self.criterion(pred_masked, y_masked)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -94,34 +95,41 @@ class SatRainEstimationModule(L.LightningModule):
             A torch.Tensor containing the loss.
         """
         inputs, targets = batch
-        
+
         # Handle input data (can be stacked tensor or dict)
         if isinstance(inputs, dict):
             # If not stacked, concatenate input channels
             x = torch.cat(list(inputs.values()), dim=1)
         else:
             x = inputs
-            
+
         # Extract target (surface precipitation)
         if isinstance(targets, dict):
-            y = targets['surface_precip']
+            y = targets["surface_precip"]
         else:
             y = targets
 
         # Ensure target is float32 and has the right shape
         y = y.float()
-        
+
         pred = self(x)
-        
+
         # Squeeze output to match target shape if needed
         if pred.dim() == 4 and pred.size(1) == 1:
             pred = pred.squeeze(1)
-        
+
         # Calculate loss only over finite values
         loss = self._compute_finite_loss(pred, y)
 
         # Log loss
-        self.log(f"train/loss", loss, on_step=True, on_epoch=True, prog_bar=True, batch_size=x.size(0))
+        self.log(
+            f"train/loss",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=x.size(0),
+        )
 
         # Log LR (first param group) once per step for train
         opt = self.optimizers()
@@ -130,48 +138,56 @@ class SatRainEstimationModule(L.LightningModule):
                 lr = opt[0].param_groups[0]["lr"]
             else:
                 lr = opt.param_groups[0]["lr"]
-            self.log("lr", lr, on_step=True, on_epoch=False, prog_bar=False, logger=True)
+            self.log(
+                "lr", lr, on_step=True, on_epoch=False, prog_bar=False, logger=True
+            )
 
         return loss
-
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Validation step with comprehensive metrics computation."""
         inputs, targets = batch
-        
+
         # Handle input data (can be stacked tensor or dict)
         if isinstance(inputs, dict):
             # If not stacked, concatenate input channels
             x = torch.cat(list(inputs.values()), dim=1)
         else:
             x = inputs
-            
+
         # Extract target (surface precipitation)
         if isinstance(targets, dict):
-            y = targets['surface_precip']
+            y = targets["surface_precip"]
         else:
             y = targets
 
         # Ensure target is float32 and has the right shape
         y = y.float()
-        
+
         pred = self(x)
-        
+
         # Squeeze output to match target shape if needed
         if pred.dim() == 4 and pred.size(1) == 1:
             pred = pred.squeeze(1)
-        
+
         # Compute main loss only over finite values
         loss = self._compute_finite_loss(pred, y)
 
         # Log main loss
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=x.size(0))
+        self.log(
+            "val/loss",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=x.size(0),
+        )
 
         # Compute and log validation metrics
         # Flatten tensors for metric computation
         y_flat = y.view(-1)
         pred_flat = pred.view(-1)
-        
+
         # Remove NaN/inf values for metric computation (only use finite values)
         mask = torch.isfinite(y_flat) * torch.isfinite(pred_flat)
         if mask.sum() > 0:
@@ -196,7 +212,9 @@ class SatRainEstimationModule(L.LightningModule):
         self.plot_samples.log(self)
         self.plot_samples.reset()
 
-    def configure_optimizers(self) -> Union[Optimizer, Tuple[List[Optimizer], List[_LRScheduler]]]:
+    def configure_optimizers(
+        self,
+    ) -> Union[Optimizer, Tuple[List[Optimizer], List[_LRScheduler]]]:
         """
         Called by lightning to configure optimizers and schedulers.
         """
@@ -232,8 +250,8 @@ class SatRainEstimationModule(L.LightningModule):
         # Lightning expects a dict if you want nice logging/interval control
         scheduler_conf = {
             "scheduler": scheduler,
-            "interval": "epoch",   # update each epoch; CAWR updates per step internally but stepping each epoch is fine
-            "monitor": "val/loss", # NOT required by CAWR, but harmless and consistent with ES
+            "interval": "epoch",  # update each epoch; CAWR updates per step internally but stepping each epoch is fine
+            "monitor": "val/loss",  # NOT required by CAWR, but harmless and consistent with ES
         }
         return [optimizer], [scheduler_conf]
 
@@ -255,6 +273,69 @@ class SatRainEstimationModule(L.LightningModule):
         ]
         if self.approach in {"sgd_simple", "adamw_simple"}:
             callbacks += [
-                EarlyStopping(monitor="val/loss", mode="min", patience=10, min_delta=0.0, verbose=True),
+                EarlyStopping(
+                    monitor="val/loss",
+                    mode="min",
+                    patience=10,
+                    min_delta=0.0,
+                    verbose=True,
+                ),
             ]
         return callbacks
+
+    def retrieval_fn(self, input_data: xr.Dataset) -> xr.Dataset:
+        """
+        Run retrieval on input data.
+        """
+        feature_dim = 0
+        if "scan" in input_data.dims:
+            spatial_dims = ("scan", "pixel")
+        elif "latitude" in input_data.dims:
+            spatial_dims = ("latitude", "longitude")
+        else:
+            spatial_dims = ()
+
+        if "batch" in input_data.dims:
+            dims = ("batch",) + spatial_dims
+            feature_dim += 1
+        else:
+            dims = spatial_dims
+
+        features = self.features
+        inpt = {}
+        for name in features:
+            inpt_data = torch.tensor(input_data[name].data).to(self.device, self.dtype)
+            if len(dims) == 1:
+                inpt_data = inpt_data.transpose(0, 1)
+            inpt[name] = inpt_data
+
+        if self.stack:
+            inpt = torch.cat(list(inpt.values()), dim=feature_dim)
+
+        with torch.no_grad():
+            pred = self.model(inpt)
+            if isinstance(pred, torch.Tensor):
+                pred = {"surface_precip": pred.expected_value()}
+
+            results = xr.Dataset()
+            if "surface_precip" in pred:
+                results["surface_precip"] = (
+                    dims,
+                    pred["surface_precip"].select(feature_dim, 0).float().cpu().numpy(),
+                )
+            if "probability_of_precip" in pred:
+                pop = pred["probability_of_precip"].select(feature_dim, 0)
+                if self.logits:
+                    pop = torch.sigmoid(pop).cpu().numpy()
+                results["probability_of_precip"] = (dims, pop)
+                precip_flag = self.precip_threshold <= pop
+                results["precip_flag"] = (dims, precip_flag)
+            if "probability_of_heavy_precip" in pred:
+                pohp = pred["probability_of_heavy_precip"].select(feature_dim, 0)
+                if self.logits:
+                    pohp = torch.sigmoid(pohp).cpu().numpy()
+                results["probability_of_heavy_precip"] = (dims, pohp)
+                heavy_precip_flag = self.heavy_precip_threshold <= pohp
+                results["heavy_precip_flag"] = (dims, heavy_precip_flag)
+
+        return results
