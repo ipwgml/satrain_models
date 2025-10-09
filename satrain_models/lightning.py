@@ -4,21 +4,32 @@ satrain_models.lightning
 
 Provides a LightningModule implementing three training recipes.
 """
-
+import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler, CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import (
+    _LRScheduler,
+    CosineAnnealingLR,
+    CosineAnnealingWarmRestarts,
+    LinearLR,
+    SequentialLR,
+    StepLR,
+    ReduceLROnPlateau
+)
 
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from torchmetrics import MeanSquaredError, MeanAbsoluteError
+from torchmetrics import  MeanSquaredError, MeanAbsoluteError
 import xarray as xr
 
-from satrain_models.metrics import CorrelationCoef, PlotSamples
+from satrain_models.metrics import CorrelationCoef, PlotSamples, RelativeBias
+
+LOGGER = logging.getLogger("basic_unet_training")
 
 
 class SatRainEstimationModule(L.LightningModule):
@@ -40,23 +51,53 @@ class SatRainEstimationModule(L.LightningModule):
         model: nn.Module,
         loss: nn.Module,
         approach: str = "adamw_simple",
+        learning_rate: float = 1e-3
     ):
+        """
+        Args:
+            model: A PyTorch model implementing the model to train.
+            loss: A loss module defining the loss used to train the model.
+            approach: A string specifying the training approach.
+            learning_rate: The initial learning rate to use.
+        """
         super().__init__()
         self.save_hyperparameters(ignore=["model", "loss"])  # keeps logs tidy
 
         self.model = model
         self.criterion = loss
 
-        valid = {"sgd_simple", "adamw_simple", "adamw_cosine"}
+        valid = {
+            "sgd_lr_search",
+            "adamw_lr_search",
+            "sgd_reduce_on_plateau",
+            "sgd_warmup_cosine_annealing",
+            "adamw_warmup_cosine_annealing",
+            "sgd_warmup_cosine_annealing_restarts",
+            "adamw_warmup_cosine_annealing_restarts",
+            "sgd_cosine_annealing_restarts",
+            "adamw_cosine_annealing_restarts",
+        }
         if approach not in valid:
             raise ValueError(f"Unknown approach '{approach}'. Choose from {valid}.")
         self.approach = approach
+        self.learning_rate = learning_rate
 
         # Initialize validation metrics
+        self.val_bias = RelativeBias()
         self.val_mse = MeanSquaredError()
         self.val_mae = MeanAbsoluteError()
         self.val_corrcoef = CorrelationCoef()
         self.plot_samples = PlotSamples()
+
+    @property
+    def experiment_name(self):
+        version = 0
+        while True:
+            name = f"{self.approach}_v{version:02}"
+            if not (Path("checkpoints") / (name + ".ckpt")).exists():
+                break
+            version += 1
+        return name
 
     def _compute_finite_loss(self, pred: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Compute loss only over finite values (no NaN or inf).
@@ -196,6 +237,7 @@ class SatRainEstimationModule(L.LightningModule):
             pred_clean = pred_flat[mask]
 
             # Update metrics
+            self.val_bias.update(pred_clean, y_clean)
             self.val_mse.update(pred_clean, y_clean)
             self.val_mae.update(pred_clean, y_clean)
             self.val_corrcoef.update(pred_clean, y_clean)
@@ -204,6 +246,8 @@ class SatRainEstimationModule(L.LightningModule):
         return loss
 
     def on_validation_epoch_end(self):
+        self.log("val/bias", self.val_bias.compute())
+        self.val_bias.reset()
         self.log("val/mae", self.val_mae.compute())
         self.val_mae.reset()
         self.log("val/mse", self.val_mse.compute())
@@ -221,40 +265,212 @@ class SatRainEstimationModule(L.LightningModule):
         """
         hp = self.hparams
 
-        if hp.approach == "sgd_simple":
+        # Learning rate search with SGD
+        if hp.approach == "sgd_lr_search":
+            LOGGER.info(
+                "Performing learning rate search with SGD optimizer across %s steps.",
+                self.trainer.estimated_stepping_batches
+            )
             optimizer = torch.optim.SGD(
                 self.parameters(),
-                lr=0.1 / 256 * 32,
-                momentum=hp.sgd_momentum,
-                nesterov=hp.sgd_nesterov,
+                lr=1e-5,
+                momentum=0.9,
+                nesterov=True,
             )
-            return optimizer  # no scheduler; use EarlyStopping callback
+            scheduler = StepLR(
+                optimizer,
+                gamma=1e5 ** (1/100),
+                step_size=1,
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
 
-        if hp.approach == "adamw_simple":
+        # Learning rate search with AdamW
+        if hp.approach == "adamw_lr_search":
+            LOGGER.info(
+                "Performing learning rate search with AdamW optimizer across %s steps.",
+                self.trainer.estimated_stepping_batches
+            )
             optimizer = torch.optim.AdamW(
                 self.parameters(),
-                lr=1e-3 / 256 * 32,
+                lr=1e-6,
             )
-            return optimizer  # no scheduler; use EarlyStopping callback
+            scheduler = StepLR(
+                optimizer,
+                gamma=1e5 ** (1/100),
+                step_size=1,
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
 
-        # adamw_cosine
-        optimizer = torch.optim.AdamW(
-            self.parameters(),
-            lr=1e-3 / 256 * 32,
+        if hp.approach == "sgd_reduce_on_plateau":
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=0.01,
+                momentum=0.9,
+                nesterov=True,
+            )
+            scheduler = ReduceLROnPlateau(
+                optimizer,
+                factor=0.1,
+                patience=5,
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        if hp.approach == "adamw_reduce_on_plateau":
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=1e-3,
+            )
+            scheduler = ReduceLROnPlateau(
+                optimizer,
+                factor=0.1,
+                patience=5,
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        if hp.approach == "sgd_warmup_cosine_annealing":
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=0.02,
+                momentum=0.9,
+                nesterov=True,
+            )
+            scheduler = SequentialLR(
+                optimizer,
+                [
+                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
+                    CosineAnnealingLR(optimizer, T_max=int(0.9 * self.trainer.estimated_stepping_batches))
+                ],
+                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        if hp.approach == "adamw_warmup_cosine_annealing":
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=6e-4,
+            )
+            scheduler = SequentialLR(
+                optimizer,
+                [
+                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
+                    CosineAnnealingLR(optimizer, T_max=int(0.9 * self.trainer.estimated_stepping_batches))
+                ],
+                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        if hp.approach == "sgd_warmup_cosine_annealing_restarts":
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=0.02,
+                momentum=0.9,
+                nesterov=True,
+            )
+            scheduler = SequentialLR(
+                optimizer,
+                [
+                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
+                    CosineAnnealingWarmRestarts(optimizer, T_0=int(0.13 * self.trainer.estimated_stepping_batches), T_mult=2)
+                ],
+                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        if hp.approach == "adamw_warmup_cosine_annealing_restarts":
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=6e-4,
+            )
+            scheduler = SequentialLR(
+                optimizer,
+                [
+                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
+                    CosineAnnealingWarmRestarts(optimizer, T_0=int(0.13 * self.trainer.estimated_stepping_batches), T_mult=2)
+                ],
+                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        if hp.approach == "sgd_cosine_annealing_restarts":
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=0.01,
+                momentum=0.9,
+                nesterov=True,
+            )
+            scheduler = CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=int(0.15 * self.trainer.estimated_stepping_batches),
+                T_mult=2
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        if hp.approach == "adamw_cosine_annealing_restarts":
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=1e-3,
+            )
+            scheduler = CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=int(0.15 * self.trainer.estimated_stepping_batches),
+                T_mult=2
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        raise ValueError(
+            "Unknow training approach '%s'.",
+            hp.approach
         )
-        scheduler = CosineAnnealingWarmRestarts(
-            optimizer,
-            T_0=15,
-            T_mult=2,
-            eta_min=1e-8,
-        )
-        # Lightning expects a dict if you want nice logging/interval control
-        scheduler_conf = {
-            "scheduler": scheduler,
-            "interval": "epoch",  # update each epoch; CAWR updates per step internally but stepping each epoch is fine
-            "monitor": "val/loss",  # NOT required by CAWR, but harmless and consistent with ES
-        }
-        return [optimizer], [scheduler_conf]
 
     def default_callbacks(self) -> List[L.Callback]:
         """
@@ -272,6 +488,8 @@ class SatRainEstimationModule(L.LightningModule):
                 auto_insert_metric_name=False,
             ),
         ]
+        callbacks[0].CHECKPOINT_NAME_LAST = self.experiment_name
+
         if self.approach in {"sgd_simple", "adamw_simple"}:
             callbacks += [
                 EarlyStopping(

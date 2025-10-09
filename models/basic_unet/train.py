@@ -3,6 +3,7 @@
 Clean PyTorch Lightning training script for UNet model on SatRain dataset.
 All configuration is read from TOML files.
 """
+import logging
 from pathlib import Path
 
 import torch.nn as nn
@@ -14,6 +15,9 @@ from satrain_models import (
     SatRainEstimationModule, create_unet, SatRainConfig, SatRainDataModule,
     tensorboard_to_netcdf
 )
+
+
+LOGGER = logging.getLogger("basic_unet_training")
 
 
 def main():
@@ -33,7 +37,7 @@ def main():
     if not compute_config_path.exists():
         raise FileNotFoundError(f"Compute config not found: {compute_config_path}")
     compute_config = SatRainConfig.from_toml_file(compute_config_path)
-    LOGGER.info(f"✓ Loaded compute config from: {compute_config_path}")
+    LOGGER.info(f"Loaded compute config from: {compute_config_path}")
 
 
     # Training settings
@@ -92,9 +96,11 @@ def main():
     )
     
 
+    LOGGER.info(f"Starting the training: {compute_config_path}")
     # Train the model
     trainer.fit(lightning_module, datamodule)
 
+    LOGGER.info(f"Training finished. Saving metrics.")
     # Save metrics to .netcdf
     current_log_dir = loggers[0].log_dir
     netcdf_dir = Path("netcdf_metrics")
