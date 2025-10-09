@@ -49,6 +49,61 @@ class ScalarMetric:
         )
 
 
+class RelativeBias(ScalarMetric, tm.Metric):
+    """
+    The mean error also known as bias.
+    """
+    name = "Relative Bias"
+
+    def __init__(self):
+        ScalarMetric.__init__(self)
+        tm.Metric.__init__(self)
+        error = torch.zeros(self.shape)
+        self.add_state("x", default=torch.zeros(self.shape), dist_reduce_fx="sum")
+        self.add_state("y", default=torch.zeros(self.shape), dist_reduce_fx="sum")
+        self.add_state("counts", default=torch.zeros(self.shape), dist_reduce_fx="sum")
+
+    def update(
+        self,
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        weights: Optional[torch.Tensor] = None,
+    ):
+        """
+        Args:
+            pred: A tensor containing the point predictions from the
+                retrieval model.
+            target: A tensor containing the reference values corresponding
+                to 'pred'.
+            weights: An optional tensor containing weights to apply to each
+                sample.
+        """
+        pred = pred.squeeze()
+        target = target.squeeze()
+        if weights is None:
+            weights = torch.ones_like(target)
+        else:
+            weights = weights.squeeze()
+
+        if pred.dim() >= 2:
+            pred = pred.flatten()
+            target = target.flatten()
+            weights = weights.flatten()
+
+        self.x += (pred * weights).sum()
+        self.y += (target * weights).sum()
+        self.counts += weights.sum()
+
+    def compute(self) -> torch.Tensor:
+        """
+        Calculate the relative bias in percent.
+        """
+        x_mean = self.x / self.counts
+        y_mean = self.y / self.counts
+        bias = 100.0 * (x_mean - y_mean) / y_mean
+        return bias
+
+
 class CorrelationCoef(ScalarMetric, tm.Metric):
     """
     Linear correlation coefficient.

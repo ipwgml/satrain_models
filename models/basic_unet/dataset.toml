@@ -1,10 +1,10 @@
 # SatRain Dataset Configuration for Basic UNet CNN Model
 geometry = "gridded"       # "gridded" or "on_swath"
-subset = "m"               # "xs", "s", "m", "l", "xl"
+subset = "xl"               # "xs", "s", "m", "l", "xl"
 
 # Retrieval input configurations (all inputs defined here are active by default)
 [inputs.gmi]
 name = "gmi"
-include_angles = true      # Include earth incidence angles
+include_angles = false      # Include earth incidence angles
 normalize = "minmax"       # "standardize", "minmax", or null
 nan = -1.5                # Value to replace NaN with

@@ -22,8 +22,6 @@ LOGGER = logging.getLogger("basic_unet_training")
 
 def main():
     """Main training function - all configuration from TOML files."""
-    
-
 
     # Load dataset configuration
     dataset_config_path = Path("dataset.toml")
@@ -46,6 +44,7 @@ def main():
     batch_size = compute_settings.get('batch_size', 8)
     num_workers = compute_settings.get('num_workers', 4)
     approach = compute_settings.get('approach', 'adamw_simple')
+    learning_rate = compute_settings.get('learning_rate', 1e-3)
     
     # Hardware settings
     accelerator = compute_settings.get('accelerator', 'gpu')
@@ -77,9 +76,11 @@ def main():
         model=unet_model,
         loss=nn.MSELoss(),
         approach=approach,
+        learning_rate=learning_rate
     )
-    
-    loggers = [TensorBoardLogger(save_dir=output_dir, name="basic_unet")]
+    experiment_name = lightning_module.experiment_name
+
+    loggers = [TensorBoardLogger(save_dir=output_dir, name=experiment_name)]
 
     # Create trainer
     trainer = L.Trainer(
@@ -107,7 +108,7 @@ def main():
     netcdf_dir.mkdir(exist_ok=True)
     log_path = Path(current_log_dir)
     version_name = log_path.name
-    output_path = netcdf_dir / f"basic_unet_{version_name}_metrics.nc"
+
     metadata = {
         'experiment': 'basic_unet',
         'version': version_name,
@@ -115,6 +116,7 @@ def main():
     }
 
     # Extract and save metrics
+    output_path = netcdf_dir / (experiment_name + ".nc")
     tensorboard_to_netcdf(
         log_dir=current_log_dir,
         output_path=output_path,
