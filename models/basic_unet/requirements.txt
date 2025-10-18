@@ -9,5 +9,5 @@ tensorboard>=2.8.0
 xarray>=0.20.0
 h5py>=3.6.0
 hdf5plugin>=4.0.0
-git+https://github.com/ipwgml/satrain.git
-git+https://github.com/ipwgml/satrain_models.git
+git+https://github.com/ipwgml/satrain
+git+https://github.com/ipwgml/satrain_models
