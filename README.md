@@ -6,7 +6,7 @@ A collection of ML model implementations for the SatRain dataset.
 
 The ``satrain_models`` repository consists of two primary components:
     - The ``models`` directory provides specific implementations of machine-learning precipitation retrievals on the ``satrain`` dataset.
-    - The ``satrain_models`` Python package provides shared utility functions and generic implementations of neural network models. The code in ``satrain_models`` is intended to be reused across model implementation in ``models`` or in external applications.
+    - The ``satrain_models`` Python package provides shared utility functions and generic implementations of neural networks or other machine-learning models. The code in ``satrain_models`` is intended to be reused across model implementation in ``models`` or in external applications.
 
 
 ## Installation

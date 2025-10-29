@@ -68,6 +68,7 @@ class SatRainEstimationModule(L.LightningModule):
             "sgd_lr_search",
             "adamw_lr_search",
             "sgd_reduce_on_plateau",
+            "adamw_reduce_on_plateau",
             "sgd_warmup_cosine_annealing",
             "adamw_warmup_cosine_annealing",
             "sgd_warmup_cosine_annealing_restarts",
@@ -369,7 +370,7 @@ class SatRainEstimationModule(L.LightningModule):
         if hp.approach == "adamw_warmup_cosine_annealing":
             optimizer = torch.optim.AdamW(
                 self.parameters(),
-                lr=6e-4,
+                lr=4.14e-4,
             )
             scheduler = SequentialLR(
                 optimizer,
@@ -411,7 +412,7 @@ class SatRainEstimationModule(L.LightningModule):
         if hp.approach == "adamw_warmup_cosine_annealing_restarts":
             optimizer = torch.optim.AdamW(
                 self.parameters(),
-                lr=6e-4,
+                lr=4.14e-4,
             )
             scheduler = SequentialLR(
                 optimizer,
@@ -570,7 +571,7 @@ class SatRainEstimationModule(L.LightningModule):
 
     def save(
             self,
-            satrain_config: "SatRainConfig",
+            satrain_config: "satrain_models.config.SatRainConfig",
             output_path: Path
     ) -> None:
         """
