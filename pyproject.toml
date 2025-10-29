@@ -30,6 +30,10 @@ dependencies = [
     "lightning>=2.0.0",
     "tomli>=2.0.0;python_version<'3.11'",
     "tomli-w>=1.0.0",
+    "satrain",
+    "xarray",
+    "matplotlib",
+    "tqdm",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +43,7 @@ dev = [
     "black>=22.0",
     "isort>=5.0",
     "flake8>=4.0",
+    "mypy>=0.900",
 ]
 
 [tool.setuptools.packages.find]

@@ -6,16 +6,15 @@ Provides metrics to log the training progress of PyTorch models.
 """
 
 import logging
+from typing import Any, Dict, Optional, Tuple, Union
 
-from lightning import LightningModule
-from lightning.pytorch.utilities import rank_zero_only
-from lightning.pytorch import loggers
 import numpy as np
 import torch
 import torchmetrics as tm
+from lightning import LightningModule
+from lightning.pytorch import loggers
+from lightning.pytorch.utilities import rank_zero_only
 from torchvision.utils import make_grid
-from typing import Any, Dict, Optional, Tuple, Union
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +52,7 @@ class RelativeBias(ScalarMetric, tm.Metric):
     """
     The mean error also known as bias.
     """
+
     name = "Relative Bias"
 
     def __init__(self):

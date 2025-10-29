@@ -9,10 +9,9 @@ from pathlib import Path
 from typing import Optional, Union
 
 import lightning as L
-from torch.utils.data import DataLoader
-
-from satrain.pytorch.datasets import SatRainSpatial, SatRainTabular
 from satrain.evaluation import Evaluator
+from satrain.pytorch.datasets import SatRainSpatial, SatRainTabular
+from torch.utils.data import DataLoader
 
 from .config import SatRainConfig
 
@@ -227,7 +226,6 @@ class SatRainDataModule(L.LightningDataModule):
     def num_features(self) -> int:
         """Number of input features/channels."""
         return self.config.num_features
-
 
     def __repr__(self) -> str:
         """String representation of the data module."""

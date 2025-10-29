@@ -1,9 +1,10 @@
 """Configuration classes for SatRain dataset and models."""
 
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Dict, Any, List, Union
 import sys
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
 import torch
 
 # Try to import TOML library (tomllib in Python 3.11+, tomli for older versions)
@@ -20,12 +21,9 @@ except ImportError:
         TOML_AVAILABLE = False
         tomllib = None
 
-from satrain.input import (
-    InputConfig,
-    parse_retrieval_inputs,
-    calculate_input_features
-)
+from satrain.input import InputConfig, calculate_input_features, parse_retrieval_inputs
 from satrain.target import TargetConfig
+
 
 @dataclass
 class SatRainConfig:
@@ -34,10 +32,11 @@ class SatRainConfig:
     This class provides automatic parsing of retrieval inputs and target configurations
     from dictionaries when the satrain package is available.
     """
+
     base_sensor: str = "gmi"
     geometry: Optional[str] = None  # "gridded" or "on_swath"
     subset: Optional[str] = None  # "xs", "s", "m", "l", "xl"
-    format: str = "spatial",
+    format: str = ("spatial",)
     retrieval_input: Optional[List[Union[str, Dict[str, Any]]]] = None
     target_config: Optional[Union[Dict[str, Any]]] = None
 
@@ -183,7 +182,8 @@ class SatRainConfig:
 
 @dataclass
 class ComputeConfig(SatRainConfig):
-    """Configutation of compute settings for a SatRain model. """
+    """Configutation of compute settings for a SatRain model."""
+
     max_epochs: int = 100
     batch_size: int = 32
     num_workers: int = 4
@@ -194,10 +194,9 @@ class ComputeConfig(SatRainConfig):
 
     pin_memory: bool = True
     persistent_workers: bool = False
-    accumulate_grad_batches: int =  1
+    accumulate_grad_batches: int = 1
     log_every_n_steps: int = 100
     check_val_every_n_epoch: int = 1
-
 
     def __init__(self, **kwargs):
         """Parse compute configuration from keyword arguments."""

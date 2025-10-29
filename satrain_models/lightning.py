@@ -4,30 +4,35 @@ satrain_models.lightning
 
 Provides a LightningModule implementing three training recipes.
 """
+
 import logging
+import typing
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import lightning as L
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import xarray as xr
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import (
-    _LRScheduler,
     CosineAnnealingLR,
     CosineAnnealingWarmRestarts,
     LinearLR,
+    ReduceLROnPlateau,
     SequentialLR,
     StepLR,
-    ReduceLROnPlateau
+    _LRScheduler,
 )
-
-import lightning as L
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from torchmetrics import  MeanSquaredError, MeanAbsoluteError
-import xarray as xr
+from torchmetrics import MeanAbsoluteError, MeanSquaredError
 
 from satrain_models.metrics import CorrelationCoef, PlotSamples, RelativeBias
+
+# Import for type hints
+if typing.TYPE_CHECKING:
+    from .config import SatRainConfig
 
 LOGGER = logging.getLogger("basic_unet_training")
 
@@ -267,7 +272,7 @@ class SatRainEstimationModule(L.LightningModule):
         if hp.approach == "sgd_lr_search":
             LOGGER.info(
                 "Performing learning rate search with SGD optimizer across %s steps.",
-                self.trainer.estimated_stepping_batches
+                self.trainer.estimated_stepping_batches,
             )
             optimizer = torch.optim.SGD(
                 self.parameters(),
@@ -277,7 +282,7 @@ class SatRainEstimationModule(L.LightningModule):
             )
             scheduler = StepLR(
                 optimizer,
-                gamma=1e5 ** (1/100),
+                gamma=1e5 ** (1 / 100),
                 step_size=1,
             )
             scheduler_conf = {
@@ -291,7 +296,7 @@ class SatRainEstimationModule(L.LightningModule):
         if hp.approach == "adamw_lr_search":
             LOGGER.info(
                 "Performing learning rate search with AdamW optimizer across %s steps.",
-                self.trainer.estimated_stepping_batches
+                self.trainer.estimated_stepping_batches,
             )
             optimizer = torch.optim.AdamW(
                 self.parameters(),
@@ -299,7 +304,7 @@ class SatRainEstimationModule(L.LightningModule):
             )
             scheduler = StepLR(
                 optimizer,
-                gamma=1e5 ** (1/100),
+                gamma=1e5 ** (1 / 100),
                 step_size=1,
             )
             scheduler_conf = {
@@ -355,10 +360,17 @@ class SatRainEstimationModule(L.LightningModule):
             scheduler = SequentialLR(
                 optimizer,
                 [
-                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
-                    CosineAnnealingLR(optimizer, T_max=int(0.9 * self.trainer.estimated_stepping_batches))
+                    LinearLR(
+                        optimizer,
+                        start_factor=0.1,
+                        total_iters=int(0.1 * self.trainer.estimated_stepping_batches),
+                    ),
+                    CosineAnnealingLR(
+                        optimizer,
+                        T_max=int(0.9 * self.trainer.estimated_stepping_batches),
+                    ),
                 ],
-                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+                milestones=[0.1 * self.trainer.estimated_stepping_batches],
             )
             scheduler_conf = {
                 "scheduler": scheduler,
@@ -375,10 +387,17 @@ class SatRainEstimationModule(L.LightningModule):
             scheduler = SequentialLR(
                 optimizer,
                 [
-                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
-                    CosineAnnealingLR(optimizer, T_max=int(0.9 * self.trainer.estimated_stepping_batches))
+                    LinearLR(
+                        optimizer,
+                        start_factor=0.1,
+                        total_iters=int(0.1 * self.trainer.estimated_stepping_batches),
+                    ),
+                    CosineAnnealingLR(
+                        optimizer,
+                        T_max=int(0.9 * self.trainer.estimated_stepping_batches),
+                    ),
                 ],
-                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+                milestones=[0.1 * self.trainer.estimated_stepping_batches],
             )
             scheduler_conf = {
                 "scheduler": scheduler,
@@ -397,10 +416,18 @@ class SatRainEstimationModule(L.LightningModule):
             scheduler = SequentialLR(
                 optimizer,
                 [
-                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
-                    CosineAnnealingWarmRestarts(optimizer, T_0=int(0.13 * self.trainer.estimated_stepping_batches), T_mult=2)
+                    LinearLR(
+                        optimizer,
+                        start_factor=0.1,
+                        total_iters=int(0.1 * self.trainer.estimated_stepping_batches),
+                    ),
+                    CosineAnnealingWarmRestarts(
+                        optimizer,
+                        T_0=int(0.13 * self.trainer.estimated_stepping_batches),
+                        T_mult=2,
+                    ),
                 ],
-                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+                milestones=[0.1 * self.trainer.estimated_stepping_batches],
             )
             scheduler_conf = {
                 "scheduler": scheduler,
@@ -417,10 +444,18 @@ class SatRainEstimationModule(L.LightningModule):
             scheduler = SequentialLR(
                 optimizer,
                 [
-                    LinearLR(optimizer, start_factor=0.1, total_iters=int(0.1 * self.trainer.estimated_stepping_batches),),
-                    CosineAnnealingWarmRestarts(optimizer, T_0=int(0.13 * self.trainer.estimated_stepping_batches), T_mult=2)
+                    LinearLR(
+                        optimizer,
+                        start_factor=0.1,
+                        total_iters=int(0.1 * self.trainer.estimated_stepping_batches),
+                    ),
+                    CosineAnnealingWarmRestarts(
+                        optimizer,
+                        T_0=int(0.13 * self.trainer.estimated_stepping_batches),
+                        T_mult=2,
+                    ),
                 ],
-                milestones=[0.1 * self.trainer.estimated_stepping_batches]
+                milestones=[0.1 * self.trainer.estimated_stepping_batches],
             )
             scheduler_conf = {
                 "scheduler": scheduler,
@@ -439,7 +474,7 @@ class SatRainEstimationModule(L.LightningModule):
             scheduler = CosineAnnealingWarmRestarts(
                 optimizer,
                 T_0=int(0.15 * self.trainer.estimated_stepping_batches),
-                T_mult=2
+                T_mult=2,
             )
             scheduler_conf = {
                 "scheduler": scheduler,
@@ -456,7 +491,7 @@ class SatRainEstimationModule(L.LightningModule):
             scheduler = CosineAnnealingWarmRestarts(
                 optimizer,
                 T_0=int(0.15 * self.trainer.estimated_stepping_batches),
-                T_mult=2
+                T_mult=2,
             )
             scheduler_conf = {
                 "scheduler": scheduler,
@@ -465,10 +500,7 @@ class SatRainEstimationModule(L.LightningModule):
             }
             return [optimizer], [scheduler_conf]
 
-        raise ValueError(
-            "Unknow training approach '%s'.",
-            hp.approach
-        )
+        raise ValueError("Unknow training approach '%s'.", hp.approach)
 
     def default_callbacks(self) -> List[L.Callback]:
         """
@@ -500,12 +532,7 @@ class SatRainEstimationModule(L.LightningModule):
             ]
         return callbacks
 
-
-    def get_retrieval_fn(
-            self,
-            satrain_config,
-            compute_config
-    ):
+    def get_retrieval_fn(self, satrain_config, compute_config):
         """
         Get retrieval callback function for evaluation.
         """
@@ -532,8 +559,7 @@ class SatRainEstimationModule(L.LightningModule):
             for name in satrain_config.features:
 
                 inpt_data = torch.tensor(input_data[name].data).to(
-                    self.device,
-                    self.dtype
+                    self.device, self.dtype
                 )
                 if len(dims) == 1:
                     inpt_data = inpt_data.transpose(0, 1)
@@ -550,7 +576,11 @@ class SatRainEstimationModule(L.LightningModule):
                 if "surface_precip" in pred:
                     results["surface_precip"] = (
                         dims,
-                        pred["surface_precip"].select(feature_dim, 0).float().cpu().numpy(),
+                        pred["surface_precip"]
+                        .select(feature_dim, 0)
+                        .float()
+                        .cpu()
+                        .numpy(),
                     )
                 if "probability_of_precip" in pred:
                     pop = pred["probability_of_precip"].select(feature_dim, 0)
@@ -569,11 +599,7 @@ class SatRainEstimationModule(L.LightningModule):
 
         return retrieval_fn
 
-    def save(
-            self,
-            satrain_config: "satrain_models.config.SatRainConfig",
-            output_path: Path
-    ) -> None:
+    def save(self, satrain_config: "SatRainConfig", output_path: Path) -> None:
         """
         Save model and configuration to path. The file name is determined using
         the experiment name of the lightning module.
@@ -590,9 +616,5 @@ class SatRainEstimationModule(L.LightningModule):
         path = output_path / f"{self.experiment_name}.pt"
         state = self.model.state_dict()
         torch.save(
-            {
-                "state_dict": state,
-                "satrain_config": satrain_config.to_dict()
-            },
-            path
+            {"state_dict": state, "satrain_config": satrain_config.to_dict()}, path
         )
