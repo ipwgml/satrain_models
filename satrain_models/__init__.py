@@ -1,7 +1,7 @@
 """SatRain Models - ML model implementations for the SatRain dataset."""
 
 from .unet import UNet, create_unet
-from .config import SatRainConfig
+from .config import SatRainConfig, ComputeConfig
 from .lightning import SatRainEstimationModule
 from .datamodule import SatRainDataModule
 from .tensorboard_to_netcdf import (

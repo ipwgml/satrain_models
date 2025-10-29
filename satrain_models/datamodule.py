@@ -12,13 +12,9 @@ import lightning as L
 from torch.utils.data import DataLoader
 
 from satrain.pytorch.datasets import SatRainSpatial, SatRainTabular
-from .config import SatRainConfig
+from satrain.evaluation import Evaluator
 
-# Try to import satrain modules
-try:
-    SATRAIN_AVAILABLE = True
-except ImportError:
-    SATRAIN_AVAILABLE = False
+from .config import SatRainConfig
 
 
 class SatRainDataModule(L.LightningDataModule):
@@ -36,7 +32,6 @@ class SatRainDataModule(L.LightningDataModule):
         num_workers: int = 4,
         pin_memory: bool = True,
         persistent_workers: bool = True,
-        spatial: bool = True,
     ):
         """
         Initialize the SatRain DataModule.
@@ -47,21 +42,26 @@ class SatRainDataModule(L.LightningDataModule):
             num_workers: Number of data loading workers
             pin_memory: Whether to pin memory for faster GPU transfer
             persistent_workers: Whether to keep workers alive between epochs
-            spatial: Whether to use SatRainSpatial (True) or SatRainTabular (False)
         """
         super().__init__()
 
         # Load config if path provided
-        if isinstance(config, (str, Path)):
-            self.config = SatRainConfig.from_toml_file(config)
-        else:
+        if isinstance(config, SatRainConfig):
             self.config = config
+        elif isinstance(config, (str, Path)):
+            self.config = SatRainConfig.from_toml_file(config)
+        elif isinstance(config, dict):
+            self.config = SatRainConfig.from_dict(config)
+        else:
+            raise ValueError(
+                "'config' argument should either be a SatRainConfig object, "
+                " a path pointing to a .toml file or a dict."
+            )
 
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers and (num_workers > 0)
-        self.spatial = spatial
 
         # Datasets will be created in setup()
         self.train_dataset = None
@@ -139,7 +139,7 @@ class SatRainDataModule(L.LightningDataModule):
             "download": True,
         }
 
-        if self.spatial:
+        if self.config.format == "spatial":
             dataset_kwargs["augment"] = augment
             return SatRainSpatial(**dataset_kwargs)
         else:
@@ -154,6 +154,18 @@ class SatRainDataModule(L.LightningDataModule):
         # This method is called only from the main process
         # Data downloading is handled by the dataset classes
         pass
+
+    def get_evaluator(self, domain: str) -> Evaluator:
+        """
+        Load SatRain evaluator with the configuration matching this data module.
+        """
+        return Evaluator(
+            base_sensor=self.config.base_sensor,
+            geometry=self.config.geometry,
+            retrieval_input=self.config.retrieval_input,
+            domain=domain,
+            target_config=self.config.target_config,
+        )
 
     def setup(self, stage: Optional[str] = None):
         """Set up datasets for different stages."""
@@ -214,31 +226,8 @@ class SatRainDataModule(L.LightningDataModule):
     @property
     def num_features(self) -> int:
         """Number of input features/channels."""
-        if SATRAIN_AVAILABLE:
-            try:
-                from satrain.input import calculate_input_features
+        return self.config.num_features
 
-                retrieval_input = self._get_retrieval_input()
-                num_features = calculate_input_features(retrieval_input, stack=True)
-                if num_features > 0:  # Only use if it returns a valid result
-                    return num_features
-            except Exception as e:
-                print(f"⚠ Warning: satrain calculate_input_features failed: {e}")
-
-        # Fallback calculation
-        retrieval_input = self._get_retrieval_input()
-        total_channels = 0
-        for inp in retrieval_input:
-            input_name = inp.get("name") if isinstance(inp, dict) else inp
-            if input_name == "gmi":
-                total_channels += 26  # GMI obs (13) + angles (13)
-            elif input_name == "geo":
-                total_channels += 16  # GOES channels
-            elif input_name == "geo_ir":
-                total_channels += 1  # GEO IR
-            elif input_name == "ancillary":
-                total_channels += 8  # Ancillary variables
-        return total_channels or 42  # Default fallback
 
     def __repr__(self) -> str:
         """String representation of the data module."""

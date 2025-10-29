@@ -51,14 +51,12 @@ class SatRainEstimationModule(L.LightningModule):
         model: nn.Module,
         loss: nn.Module,
         approach: str = "adamw_simple",
-        learning_rate: float = 1e-3
     ):
         """
         Args:
             model: A PyTorch model implementing the model to train.
             loss: A loss module defining the loss used to train the model.
             approach: A string specifying the training approach.
-            learning_rate: The initial learning rate to use.
         """
         super().__init__()
         self.save_hyperparameters(ignore=["model", "loss"])  # keeps logs tidy
@@ -80,7 +78,6 @@ class SatRainEstimationModule(L.LightningModule):
         if approach not in valid:
             raise ValueError(f"Unknown approach '{approach}'. Choose from {valid}.")
         self.approach = approach
-        self.learning_rate = learning_rate
 
         # Initialize validation metrics
         self.val_bias = RelativeBias()
@@ -502,59 +499,99 @@ class SatRainEstimationModule(L.LightningModule):
             ]
         return callbacks
 
-    def retrieval_fn(self, input_data: xr.Dataset) -> xr.Dataset:
+
+    def get_retrieval_fn(
+            self,
+            satrain_config,
+            compute_config
+    ):
         """
-        Run retrieval on input data.
+        Get retrieval callback function for evaluation.
         """
-        feature_dim = 0
-        if "scan" in input_data.dims:
-            spatial_dims = ("scan", "pixel")
-        elif "latitude" in input_data.dims:
-            spatial_dims = ("latitude", "longitude")
-        else:
-            spatial_dims = ()
 
-        if "batch" in input_data.dims:
-            dims = ("batch",) + spatial_dims
-            feature_dim += 1
-        else:
-            dims = spatial_dims
+        def retrieval_fn(input_data: xr.Dataset) -> xr.Dataset:
+            """
+            Run retrieval on input data.
+            """
+            feature_dim = 0
+            if "scan" in input_data.dims:
+                spatial_dims = ("scan", "pixel")
+            elif "latitude" in input_data.dims:
+                spatial_dims = ("latitude", "longitude")
+            else:
+                spatial_dims = ()
 
-        features = self.features
-        inpt = {}
-        for name in features:
-            inpt_data = torch.tensor(input_data[name].data).to(self.device, self.dtype)
-            if len(dims) == 1:
-                inpt_data = inpt_data.transpose(0, 1)
-            inpt[name] = inpt_data
+            if "batch" in input_data.dims:
+                dims = ("batch",) + spatial_dims
+                feature_dim += 1
+            else:
+                dims = spatial_dims
 
-        if self.stack:
+            inpt = {}
+            for name in satrain_config.features:
+
+                inpt_data = torch.tensor(input_data[name].data).to(
+                    self.device,
+                    self.dtype
+                )
+                if len(dims) == 1:
+                    inpt_data = inpt_data.transpose(0, 1)
+                inpt[name] = inpt_data
+
             inpt = torch.cat(list(inpt.values()), dim=feature_dim)
 
-        with torch.no_grad():
-            pred = self.model(inpt)
-            if isinstance(pred, torch.Tensor):
-                pred = {"surface_precip": pred.expected_value()}
+            with torch.no_grad():
+                pred = self.model(inpt)
+                if isinstance(pred, torch.Tensor):
+                    pred = {"surface_precip": pred}
 
-            results = xr.Dataset()
-            if "surface_precip" in pred:
-                results["surface_precip"] = (
-                    dims,
-                    pred["surface_precip"].select(feature_dim, 0).float().cpu().numpy(),
-                )
-            if "probability_of_precip" in pred:
-                pop = pred["probability_of_precip"].select(feature_dim, 0)
-                if self.logits:
+                results = xr.Dataset()
+                if "surface_precip" in pred:
+                    results["surface_precip"] = (
+                        dims,
+                        pred["surface_precip"].select(feature_dim, 0).float().cpu().numpy(),
+                    )
+                if "probability_of_precip" in pred:
+                    pop = pred["probability_of_precip"].select(feature_dim, 0)
                     pop = torch.sigmoid(pop).cpu().numpy()
-                results["probability_of_precip"] = (dims, pop)
-                precip_flag = self.precip_threshold <= pop
-                results["precip_flag"] = (dims, precip_flag)
-            if "probability_of_heavy_precip" in pred:
-                pohp = pred["probability_of_heavy_precip"].select(feature_dim, 0)
-                if self.logits:
+                    results["probability_of_precip"] = (dims, pop)
+                    precip_flag = self.precip_threshold <= pop
+                    results["precip_flag"] = (dims, precip_flag)
+                if "probability_of_heavy_precip" in pred:
+                    pohp = pred["probability_of_heavy_precip"].select(feature_dim, 0)
                     pohp = torch.sigmoid(pohp).cpu().numpy()
-                results["probability_of_heavy_precip"] = (dims, pohp)
-                heavy_precip_flag = self.heavy_precip_threshold <= pohp
-                results["heavy_precip_flag"] = (dims, heavy_precip_flag)
+                    results["probability_of_heavy_precip"] = (dims, pohp)
+                    heavy_precip_flag = self.heavy_precip_threshold <= pohp
+                    results["heavy_precip_flag"] = (dims, heavy_precip_flag)
 
-        return results
+            return results
+
+        return retrieval_fn
+
+    def save(
+            self,
+            satrain_config: "SatRainConfig",
+            output_path: Path
+    ) -> None:
+        """
+        Save model and configuration to path. The file name is determined using
+        the experiment name of the lightning module.
+
+        Args:
+            satrain_config: The SatRain config the model was trained with.
+            output_path: The path in in which to save the model.
+        """
+        if not output_path.exists() or not output_path.is_dir():
+            raise ValueError(
+                "Output path for storing the model should point to an existing "
+                "directory."
+            )
+        path = output_path / f"{self.experiment_name}.pt"
+        state = self.model.state_dict()
+        torch.save(
+            {
+                "state_dict": state,
+                "satrain_config": satrain_config.to_dict()
+            },
+            path
+        )

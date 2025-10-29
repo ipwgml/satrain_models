@@ -4,7 +4,10 @@ A collection of ML model implementations for the SatRain dataset.
 
 ## Overview
 
-This project provides a Python package `satrain_models` with utility functions and a collection of model implementations in the `models/` directory. Each model implementation is organized in its own folder with conda-compatible requirements.
+The ``satrain_models`` repository consists of two primary components:
+    - The ``models`` directory provides specific implementations of machine-learning precipitation retrievals on the ``satrain`` dataset.
+    - The ``satrain_models`` Python package provides shared utility functions and generic implementations of neural network models. The code in ``satrain_models`` is intended to be reused across model implementation in ``models`` or in external applications.
+
 
 ## Installation
 
@@ -26,9 +29,9 @@ pip install -e .[dev]
 satrain_models/
 ├── satrain_models/          # Python package with PyTorch models and utilities
 └── models/                  # Model implementations
-    ├── model_name_1/       # Each model in its own folder
+    ├── model_name_1/        # Each model in its own folder
     │   ├── requirements.txt # Conda-compatible requirements
-    │   └── ...             # Model-specific files
+    │   └── ...              # Model-specific files
     └── model_name_2/
         ├── requirements.txt
         └── ...

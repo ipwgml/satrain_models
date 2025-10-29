@@ -1,9 +1,10 @@
 """Configuration classes for SatRain dataset and models."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any, List, Union
 import sys
 from pathlib import Path
+import torch
 
 # Try to import TOML library (tomllib in Python 3.11+, tomli for older versions)
 try:
@@ -19,56 +20,53 @@ except ImportError:
         TOML_AVAILABLE = False
         tomllib = None
 
-# Try to import from satrain package if available
-try:
-    from satrain.input import InputConfig, parse_retrieval_inputs
-    from satrain.target import TargetConfig
+from satrain.input import (
+    InputConfig,
+    parse_retrieval_inputs,
+    calculate_input_features
+)
+from satrain.target import TargetConfig
 
-    SATRAIN_AVAILABLE = True
-except ImportError:
-    SATRAIN_AVAILABLE = False
-    InputConfig = None
-    TargetConfig = None
-    parse_retrieval_inputs = None
-
-
+@dataclass
 class SatRainConfig:
     """Configuration for SatRain dataset including geometry, subset, retrieval input and target config.
 
     This class provides automatic parsing of retrieval inputs and target configurations
     from dictionaries when the satrain package is available.
     """
-
+    base_sensor: str = "gmi"
     geometry: Optional[str] = None  # "gridded" or "on_swath"
     subset: Optional[str] = None  # "xs", "s", "m", "l", "xl"
+    format: str = "spatial",
     retrieval_input: Optional[List[Union[str, Dict[str, Any]]]] = None
     target_config: Optional[Union[Dict[str, Any]]] = None
 
     def __init__(self, **kwargs):
         """Initialize with flexible keyword arguments from TOML."""
-        self.geometry = kwargs.get("geometry")
-        self.subset = kwargs.get("subset")
-        self.retrieval_input = kwargs.get("retrieval_input")
-        self.target_config = kwargs.get("target_config")
+        self.base_sensor = kwargs.pop("base_sensor")
+        self.geometry = kwargs.pop("geometry")
+        self.subset = kwargs.pop("subset")
+        self.format = kwargs.pop("format")
+        self.retrieval_input = kwargs.pop("retrieval_input")
+        self.target_config = kwargs.pop("target_config", {})
 
-        # Store other keys as attributes for flexibility
-        for key, value in kwargs.items():
-            if not hasattr(self, key):
-                setattr(self, key, value)
+        if 0 < len(kwargs):
+            raise ValueError(
+                f"Encountered unsupported configuration arguments: {list(kwargs.keys())}"
+            )
 
         # Call post-init processing
         self.__post_init__()
 
     def __post_init__(self):
         """Parse retrieval_input and target_config after initialization."""
-        if SATRAIN_AVAILABLE:
-            # Parse retrieval inputs if provided
-            if self.retrieval_input is not None:
-                self.retrieval_input = parse_retrieval_inputs(self.retrieval_input)
+        # Parse retrieval inputs if provided
+        if self.retrieval_input is not None:
+            self.retrieval_input = parse_retrieval_inputs(self.retrieval_input)
 
-            # Parse target config if provided as dict
-            if isinstance(self.target_config, dict):
-                self.target_config = TargetConfig(**self.target_config)
+        # Parse target config if provided as dict
+        if isinstance(self.target_config, dict):
+            self.target_config = TargetConfig(**self.target_config)
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "SatRainConfig":
@@ -131,36 +129,34 @@ class SatRainConfig:
         config_dict = tomllib.loads(toml_string)
         return cls.from_dict(config_dict)
 
+    @property
+    def num_features(self) -> int:
+        """Number of input features/channels."""
+        return calculate_input_features(self.retrieval_input, stack=True)
+
+    @property
+    def features(self) -> int:
+        """Number of input features/channels."""
+        features = []
+        for inpt in self.retrieval_input:
+            features += list(inpt.features.keys())
+        return features
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert SatRainConfig to dictionary representation.
 
         Returns:
             Dictionary representation of the configuration
         """
-        result = {}
+        inpts = []
+        for inpt in self.retrieval_input:
+            dct = asdict(inpt)
+            dct["name"] = inpt.__class__.__name__.lower()
+            inpts.append(dct)
 
-        if self.geometry is not None:
-            result["geometry"] = self.geometry
-        if self.subset is not None:
-            result["subset"] = self.subset
-        if self.retrieval_input is not None:
-            if (
-                SATRAIN_AVAILABLE
-                and self.retrieval_input
-                and hasattr(self.retrieval_input[0], "to_dict")
-            ):
-                result["retrieval_input"] = [
-                    inp.to_dict() for inp in self.retrieval_input
-                ]
-            else:
-                result["retrieval_input"] = self.retrieval_input
-        if self.target_config is not None:
-            if SATRAIN_AVAILABLE and hasattr(self.target_config, "to_dict"):
-                result["target_config"] = self.target_config.to_dict()
-            else:
-                result["target_config"] = self.target_config
-
-        return result
+        dct = asdict(self)
+        dct["retrieval_input"] = inpts
+        return dct
 
     def to_toml_file(self, toml_path: Union[str, Path]) -> None:
         """Write SatRainConfig to TOML file.
@@ -183,3 +179,62 @@ class SatRainConfig:
 
         with open(toml_path, "wb") as f:
             tomli_w.dump(config_dict, f)
+
+
+@dataclass
+class ComputeConfig(SatRainConfig):
+    """Configutation of compute settings for a SatRain model. """
+    max_epochs: int = 100
+    batch_size: int = 32
+    num_workers: int = 4
+    approach: str = "sgw_warmup_cosine_annealing_restarts"
+    accelerator: str = "gpu"
+    devices: List[int] = None
+    precision: str = "float32"
+
+    pin_memory: bool = True
+    persistent_workers: bool = False
+    accumulate_grad_batches: int =  1
+    log_every_n_steps: int = 100
+    check_val_every_n_epoch: int = 1
+
+
+    def __init__(self, **kwargs):
+        """Parse compute configuration from keyword arguments."""
+        print(kwargs)
+        self.max_epochs = kwargs.pop("max_epochs")
+        self.batch_size = kwargs.pop("batch_size")
+        self.num_workers = kwargs.pop("num_workers")
+        self.approach = kwargs.pop("approach")
+        self.accelerator = kwargs.pop("accelerator")
+        self.devices = kwargs.pop("devices", {})
+        self.precision = kwargs.pop("precision", {})
+
+        self.pin_memory = kwargs.pop("pin_memory", True)
+        self.persistent_workers = kwargs.pop("persistent_workers", False)
+        self.accumulate_grad_batches = kwargs.pop("accumulate_grad_batches", 1)
+        self.log_every_n_steps = kwargs.pop("log_every_n_steps", 100)
+        self.check_val_every_n_epoch = kwargs.pop("check_val_every_n_epoch", 1)
+
+        if 0 < len(kwargs):
+            raise ValueError(
+                f"Encountered unsupported configuration arguments: {list(kwargs.keys())}"
+            )
+
+    @property
+    def device(self):
+        """
+        Helper function to calculate suitable single-device PyTorch device
+        string from 'accelerator' and 'device' attributes.
+        """
+        if self.accelerator == "gpu":
+            if isinstance(self.devices, list):
+                return f"cuda:{self.devices[0]}"
+            if isinstance(self.devices, int):
+                return f"cuda:{self.devices}"
+            return "cuda"
+        return "cpu"
+
+    @property
+    def dtype(self):
+        return getattr(torch, self.precision)

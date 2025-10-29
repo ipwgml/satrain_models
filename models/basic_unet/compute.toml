@@ -1,12 +1,10 @@
-# Compute Configuration for Training
-[compute]
 # === Hardware Configuration ===
 accelerator = "gpu"          # "cpu", "gpu", "mps", "auto"
 devices = 1                  # Number of devices to use (1 for single GPU)
 precision = "bf16"             # "16", "bf16", "32", "16-mixed"
 
 # === Training Configuration ===
-max_epochs = 100               # Maximum training epochs
+max_epochs = 1               # Maximum training epochs
 batch_size = 32               # Training batch size
 approach = "sgd_cosine_annealing_restarts"    # "sgd_simple", "adamw_simple", "adamw_cosine"
 
@@ -19,6 +17,3 @@ persistent_workers = false   # Keep workers alive between epochs
 accumulate_grad_batches = 1  # Gradient accumulation batches
 log_every_n_steps = 1        # Log metrics every N steps
 check_val_every_n_epoch = 1  # Validate every N epochs
-
-# === Logging & Output ===
-output_dir = "./lightning_logs"     # Output directory for logs and checkpoints
