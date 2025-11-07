@@ -83,7 +83,7 @@ def extract_scalars_from_tensorboard(
         tags = available_tags
 
         # Check for specific validation metrics we expect
-        expected_val_metrics = ["val/loss", "val/mse", "val/mae", "val/pearson"]
+        expected_val_metrics = ["val/loss", "val/mse", "val/mae", "val/corrcoef"]
         missing_val_metrics = [
             m for m in expected_val_metrics if m not in available_tags
         ]

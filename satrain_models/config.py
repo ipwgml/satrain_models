@@ -200,7 +200,6 @@ class ComputeConfig(SatRainConfig):
 
     def __init__(self, **kwargs):
         """Parse compute configuration from keyword arguments."""
-        print(kwargs)
         self.max_epochs = kwargs.pop("max_epochs")
         self.batch_size = kwargs.pop("batch_size")
         self.num_workers = kwargs.pop("num_workers")
