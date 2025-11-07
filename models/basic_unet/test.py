@@ -48,9 +48,7 @@ def main():
         state = {key[6:]: val for key, val in state.items()}
 
     satrain_config = SatRainConfig(**loaded["satrain_config"])
-    print("CFG :: ", satrain_config)
     LOGGER.info(f"Loaded SatRain config from model file %s", model_path)
-
 
     # Load compute configuration
     compute_config_path = Path("compute.toml")
@@ -88,7 +86,7 @@ def main():
     results = []
     domains = ["austria", "conus", "korea"]
     for domain in domains:
-        LOGGER.info("Running evaluation for domain 'austria'.")
+        LOGGER.info("Running evaluation for domain '%s'.", domain)
         evaluator = data_module.get_evaluator(domain)
         evaluator.evaluate(
             lightning_module.get_retrieval_fn(satrain_config, compute_config),
