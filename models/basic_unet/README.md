@@ -19,10 +19,10 @@ This model uses the UNet architecture from the `satrain_models` package train a 
 
 ## Requirements
 
-Install the required dependencies using conda:
+Install required dependencies:
 
 ```bash
-conda install --file requirements.txt
+pip install -r requirements.txt
 ```
 
 
