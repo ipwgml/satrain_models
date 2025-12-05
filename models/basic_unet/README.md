@@ -5,7 +5,7 @@ This directory contains a basic UNet implementation for training on the SatRain 
 
 ## Overview
 
-This model uses the UNet architecture from the `satrain_models` package train a precipitation retrieval on the SatRain dataset.
+This model trains a UNet precipitation retrieval on the SatRain dataset using the UNet implementation from the `satrain_models.unet` module. 
 
 
 ## Files
@@ -17,7 +17,7 @@ This model uses the UNet architecture from the `satrain_models` package train a 
 - `requirements.txt`: Required packages to run the training.
 - `README.md`: This documentation file
 
-## Requirements
+## Dependencies
 
 Install required dependencies:
 
@@ -52,7 +52,7 @@ To evaluate a model on the SatRain testing data run
 python test.py models/model_name.pt
 ```
 
-This should work for both final stored models as well as checkpoint files.
+This works for both final models stored in the ``models`` directory as well as checkpoints from the ``checkpoints`` folder. The test results are stored in NetCDF format in the ``test_results`` directory.
 
 ## Configuration
 

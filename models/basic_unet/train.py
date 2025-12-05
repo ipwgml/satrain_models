@@ -51,7 +51,7 @@ def main():
 
     # Create model
     unet_model = create_unet(
-        n_channels=datamodule.num_features, n_outputs=1, bilinear=False
+        n_channels=datamodule.num_features, n_outputs=1, bilinear=True
     )
 
     # Create Lightning module

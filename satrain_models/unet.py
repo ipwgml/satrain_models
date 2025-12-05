@@ -4,6 +4,7 @@ satrain_models.unet
 
 Provides an implementation of a basic PyTorch UNet.
 """
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -15,7 +16,12 @@ class DoubleConv(nn.Module):
     Convolution block consisting of two convolution, block, ReLU sequences.
     """
 
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            mid_channels: Optional[int] = None
+    ):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
@@ -37,13 +43,17 @@ class Down(nn.Module):
     Downsampling block.
     """
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int
+    ):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2), DoubleConv(in_channels, out_channels)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.maxpool_conv(x)
 
 
@@ -52,7 +62,12 @@ class Up(nn.Module):
     Upsampling using bilinear or transpose convolution.
     """
 
-    def __init__(self, in_channels, out_channels, bilinear=True):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            bilinear: bool = True
+    ):
         super().__init__()
 
         if bilinear:
@@ -64,7 +79,11 @@ class Up(nn.Module):
             )
             self.conv = DoubleConv(in_channels, out_channels)
 
-    def forward(self, x1, x2):
+    def forward(
+            self,
+            x1: torch.Tensor,
+            x2: torch.Tensor
+    ) -> torch.Tensor:
         x1 = self.up(x1)
 
         diffY = x2.size()[2] - x1.size()[2]
@@ -94,7 +113,12 @@ class UNet(nn.Module):
     A basic UNet encoder-decoder consisting of stem, four encoder stages, and four decoder stages.
     """
 
-    def __init__(self, n_channels, n_outputs, bilinear=False):
+    def __init__(
+            self,
+            n_channels: int,
+            n_outputs: int,
+            bilinear: bool = True
+    ):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_outputs = n_outputs
@@ -104,7 +128,7 @@ class UNet(nn.Module):
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
         self.down3 = Down(256, 512)
-        factor = 2 if bilinear else 1
+        factor = 1
         self.down4 = Down(512, 1024 // factor)
         self.up1 = Up(1024, 512 // factor, bilinear)
         self.up2 = Up(512, 256 // factor, bilinear)
@@ -124,6 +148,16 @@ class UNet(nn.Module):
         x = self.up4(x, x1)
         logits = self.outc(x)
         return logits
+
+    @property
+    def num_parameters(self) -> int:
+        """Return the total number of parameters in the model."""
+        return sum(p.numel() for p in self.parameters())
+
+    @property
+    def num_trainable_parameters(self) -> int:
+        """Return the number of trainable parameters in the model."""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
 def create_unet(n_channels=3, n_outputs=1, bilinear=False):
