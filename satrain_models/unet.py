@@ -72,7 +72,7 @@ class Up(nn.Module):
 
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+            self.conv = DoubleConv(in_channels, out_channels)
         else:
             self.up = nn.ConvTranspose2d(
                 in_channels, in_channels // 2, kernel_size=2, stride=2
@@ -128,12 +128,11 @@ class UNet(nn.Module):
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
         self.down3 = Down(256, 512)
-        factor = 1
-        self.down4 = Down(512, 1024 // factor)
-        self.up1 = Up(1024, 512 // factor, bilinear)
-        self.up2 = Up(512, 256 // factor, bilinear)
-        self.up3 = Up(256, 128 // factor, bilinear)
-        self.up4 = Up(128, 64, bilinear)
+        self.down4 = Down(512, 1024)
+        self.up1 = Up(1024 + 512, 512, bilinear)
+        self.up2 = Up(512 + 256, 256, bilinear)
+        self.up3 = Up(256 + 128, 128, bilinear)
+        self.up4 = Up(128 + 64, 64, bilinear)
         self.outc = OutConv(64, n_outputs)
 
     def forward(self, x):

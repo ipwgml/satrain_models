@@ -3,6 +3,7 @@
 Clean PyTorch Lightning training script for UNet model on SatRain dataset.
 All configuration is read from TOML files.
 """
+import argparse
 import logging
 from pathlib import Path
 
@@ -24,7 +25,11 @@ LOGGER = logging.getLogger("basic_unet_training")
 
 
 def main():
-    """Main training function - all configuration from TOML files."""
+    """Training function"""
+
+    parser = argparse.ArgumentParser(description="Train basic UNet model")
+    parser.add_argument("compute_config", help="Path to compute config file.", default="compute.toml")
+    args = parser.parse_args()
 
     # Load dataset configuration
     dataset_config_path = Path("dataset.toml")
@@ -34,7 +39,7 @@ def main():
     LOGGER.info(f"Loaded SatRain config from: {dataset_config_path}")
 
     # Load compute configuration
-    compute_config_path = Path("compute.toml")
+    compute_config_path = Path(args.compute_config)
     if not compute_config_path.exists():
         raise FileNotFoundError(f"Compute config not found: {compute_config_path}")
     compute_config = ComputeConfig.from_toml_file(compute_config_path)
