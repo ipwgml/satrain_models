@@ -3,7 +3,7 @@
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -129,6 +129,13 @@ class SatRainConfig:
         return cls.from_dict(config_dict)
 
     @property
+    def tile_size(self) -> Tuple[int]:
+        """Size of the tiles used for training."""
+        if self.format == "spatial":
+            return (256, 256)
+        return (64, 64)
+
+    @property
     def num_features(self) -> int:
         """Number of input features/channels."""
         return calculate_input_features(self.retrieval_input, stack=True)
@@ -184,10 +191,12 @@ class SatRainConfig:
 class ComputeConfig(SatRainConfig):
     """Configutation of compute settings for a SatRain model."""
 
+    approach: str = "sgw_warmup_cosine_annealing_restarts"
+    learning_rate: Optional[float] = None
+
     max_epochs: int = 100
     batch_size: int = 32
     num_workers: int = 4
-    approach: str = "sgw_warmup_cosine_annealing_restarts"
     accelerator: str = "gpu"
     devices: List[int] = None
     precision: str = "float32"
@@ -198,12 +207,15 @@ class ComputeConfig(SatRainConfig):
     log_every_n_steps: int = 100
     check_val_every_n_epoch: int = 1
 
+    model_confg: Optional[Dict[str, Any]] = None
+
     def __init__(self, **kwargs):
         """Parse compute configuration from keyword arguments."""
+        self.approach = kwargs.pop("approach")
+        self.learning_rate = kwargs.pop("learning_rate", None)
         self.max_epochs = kwargs.pop("max_epochs")
         self.batch_size = kwargs.pop("batch_size")
         self.num_workers = kwargs.pop("num_workers")
-        self.approach = kwargs.pop("approach")
         self.accelerator = kwargs.pop("accelerator")
         self.devices = kwargs.pop("devices", {})
         self.precision = kwargs.pop("precision", {})
@@ -213,6 +225,7 @@ class ComputeConfig(SatRainConfig):
         self.accumulate_grad_batches = kwargs.pop("accumulate_grad_batches", 1)
         self.log_every_n_steps = kwargs.pop("log_every_n_steps", 100)
         self.check_val_every_n_epoch = kwargs.pop("check_val_every_n_epoch", 1)
+        self.model_config = kwargs.pop("model_config", {})
 
         if 0 < len(kwargs):
             raise ValueError(
@@ -235,4 +248,15 @@ class ComputeConfig(SatRainConfig):
 
     @property
     def dtype(self):
-        return getattr(torch, self.precision)
+        precision = self.precision
+        if precision in ("bf16", "bfloat16"):
+            return torch.bfloat16
+        if precision in ("16", "16-true", "float16", "fp16"):
+            return torch.float16
+        if precision in ("32", "32-true", "float32", "fp32"):
+            return torch.float32
+        if precision in ("64", "64-true", "float64", "fp64"):
+            return torch.float64
+        if precision in ("16-mixed", "bf16-mixed"):
+            return torch.bfloat16
+        raise ValueError(f"Unsupported Lightning precision string: {precision}")

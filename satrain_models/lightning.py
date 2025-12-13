@@ -34,7 +34,7 @@ from satrain_models.metrics import CorrelationCoef, PlotSamples, RelativeBias
 if typing.TYPE_CHECKING:
     from .config import SatRainConfig
 
-LOGGER = logging.getLogger("basic_unet_training")
+LOGGER = logging.getLogger(__name__)
 
 
 class SatRainEstimationModule(L.LightningModule):
@@ -56,6 +56,8 @@ class SatRainEstimationModule(L.LightningModule):
         model: nn.Module,
         loss: nn.Module,
         approach: str = "adamw_simple",
+        learning_rate: Optional[float] = None,
+        name: Optional[str] = None
     ):
         """
         Args:
@@ -84,6 +86,7 @@ class SatRainEstimationModule(L.LightningModule):
         if approach not in valid:
             raise ValueError(f"Unknown approach '{approach}'. Choose from {valid}.")
         self.approach = approach
+        self.learning_rate = learning_rate
 
         # Initialize validation metrics
         self.val_bias = RelativeBias()
@@ -91,12 +94,16 @@ class SatRainEstimationModule(L.LightningModule):
         self.val_mae = MeanAbsoluteError()
         self.val_corrcoef = CorrelationCoef()
         self.plot_samples = PlotSamples()
+        self.name = name
 
     @property
     def experiment_name(self):
         version = 0
         while True:
-            name = f"{self.approach}_v{version:02}"
+            if self.name is None:
+                name = f"{self.approach}_v{version:02}"
+            else:
+                name = f"{self.name}_{self.approach}_v{version:02}"
             if not (Path("checkpoints") / (name + ".ckpt")).exists():
                 break
             version += 1
@@ -267,6 +274,7 @@ class SatRainEstimationModule(L.LightningModule):
         Called by lightning to configure optimizers and schedulers.
         """
         hp = self.hparams
+        lr = self.learning_rate
 
         # Learning rate search with SGD
         if hp.approach == "sgd_lr_search":
@@ -274,9 +282,10 @@ class SatRainEstimationModule(L.LightningModule):
                 "Performing learning rate search with SGD optimizer across %s steps.",
                 self.trainer.estimated_stepping_batches,
             )
+            lr = 1e-5
             optimizer = torch.optim.SGD(
                 self.parameters(),
-                lr=1e-5,
+                lr=lr,
                 momentum=0.9,
                 nesterov=True,
             )
@@ -298,9 +307,10 @@ class SatRainEstimationModule(L.LightningModule):
                 "Performing learning rate search with AdamW optimizer across %s steps.",
                 self.trainer.estimated_stepping_batches,
             )
+            lr = 1e-6
             optimizer = torch.optim.AdamW(
                 self.parameters(),
-                lr=1e-6,
+                lr=lr,
             )
             scheduler = StepLR(
                 optimizer,
@@ -315,9 +325,11 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "sgd_reduce_on_plateau":
+            if lr is None:
+                lr = 0.01
             optimizer = torch.optim.SGD(
                 self.parameters(),
-                lr=0.01,
+                lr,
                 momentum=0.9,
                 nesterov=True,
             )
@@ -334,9 +346,11 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "adamw_reduce_on_plateau":
+            if lr is None:
+                lr = 1e-3
             optimizer = torch.optim.AdamW(
                 self.parameters(),
-                lr=1e-3,
+                lr=lr,
             )
             scheduler = ReduceLROnPlateau(
                 optimizer,
@@ -351,9 +365,11 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "sgd_warmup_cosine_annealing":
+            if lr is None:
+                lr = 0.02
             optimizer = torch.optim.SGD(
                 self.parameters(),
-                lr=0.02,
+                lr=lr,
                 momentum=0.9,
                 nesterov=True,
             )
@@ -380,10 +396,9 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "adamw_warmup_cosine_annealing":
-            optimizer = torch.optim.AdamW(
-                self.parameters(),
-                lr=4.14e-4,
-            )
+            if lr is None:
+                lr = 4.14e-4
+            optimizer = torch.optim.AdamW(self.parameters(), lr=lr)
             scheduler = SequentialLR(
                 optimizer,
                 [
@@ -407,9 +422,11 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "sgd_warmup_cosine_annealing_restarts":
+            if lr is None:
+                lr = 0.02
             optimizer = torch.optim.SGD(
                 self.parameters(),
-                lr=0.02,
+                lr=lr,
                 momentum=0.9,
                 nesterov=True,
             )
@@ -437,9 +454,11 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "adamw_warmup_cosine_annealing_restarts":
+            if lr is None:
+                lr = 4.14e-4
             optimizer = torch.optim.AdamW(
                 self.parameters(),
-                lr=4.14e-4,
+                lr=lr,
             )
             scheduler = SequentialLR(
                 optimizer,
@@ -465,9 +484,11 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "sgd_cosine_annealing_restarts":
+            if lr is None:
+                lr = 0.01
             optimizer = torch.optim.SGD(
                 self.parameters(),
-                lr=0.01,
+                lr=lr,
                 momentum=0.9,
                 nesterov=True,
             )
@@ -484,9 +505,11 @@ class SatRainEstimationModule(L.LightningModule):
             return [optimizer], [scheduler_conf]
 
         if hp.approach == "adamw_cosine_annealing_restarts":
+            if lr is None:
+                lr = 1e-3
             optimizer = torch.optim.AdamW(
                 self.parameters(),
-                lr=1e-3,
+                lr=lr,
             )
             scheduler = CosineAnnealingWarmRestarts(
                 optimizer,
@@ -536,6 +559,16 @@ class SatRainEstimationModule(L.LightningModule):
         """
         Get retrieval callback function for evaluation.
         """
+        if compute_config.accelerator in ["gpu", "cuda"]:
+            if compute_config.devices is None:
+                device_ind = 0
+            else:
+                device_ind = compute_config.devices[0]
+            device = f"cuda:{device_ind}"
+        else:
+            device = "cpu"
+        dtype = compute_config.dtype
+        self.model = self.model.to(device=device, dtype=dtype).eval()
 
         def retrieval_fn(input_data: xr.Dataset) -> xr.Dataset:
             """
@@ -559,7 +592,7 @@ class SatRainEstimationModule(L.LightningModule):
             for name in satrain_config.features:
 
                 inpt_data = torch.tensor(input_data[name].data).to(
-                    self.device, self.dtype
+                    device, dtype
                 )
                 if len(dims) == 1:
                     inpt_data = inpt_data.transpose(0, 1)
