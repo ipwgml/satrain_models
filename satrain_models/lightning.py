@@ -54,8 +54,8 @@ class SatRainEstimationModule(L.LightningModule):
     def __init__(
         self,
         model: nn.Module,
-        loss: nn.Module,
-        approach: str = "adamw_simple",
+        loss: nn.Module = nn.MSELoss(),
+        approach: str = "adamw_warmup_cosine_annealing",
         learning_rate: Optional[float] = None,
         name: Optional[str] = None
     ):
@@ -119,6 +119,9 @@ class SatRainEstimationModule(L.LightningModule):
         Returns:
             Loss computed only over finite values, or zero if no finite values exist
         """
+        if y.ndim < pred.ndim:
+            y = y.unsqueeze(1)
+
         # Create mask for finite values in both prediction and target
         mask = torch.isfinite(pred) & torch.isfinite(y)
 
@@ -251,7 +254,10 @@ class SatRainEstimationModule(L.LightningModule):
             self.val_mse.update(pred_clean, y_clean)
             self.val_mae.update(pred_clean, y_clean)
             self.val_corrcoef.update(pred_clean, y_clean)
-        self.plot_samples.update(pred, y)
+
+        # Only works for spatial format
+        if pred.ndim == 4:
+            self.plot_samples.update(pred, y)
 
         return loss
 

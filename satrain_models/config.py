@@ -191,7 +191,7 @@ class SatRainConfig:
 class ComputeConfig(SatRainConfig):
     """Configutation of compute settings for a SatRain model."""
 
-    approach: str = "sgw_warmup_cosine_annealing_restarts"
+    approach: str = "adamw_warmup_cosine_annealing_restarts"
     learning_rate: Optional[float] = None
 
     max_epochs: int = 100

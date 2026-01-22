@@ -318,6 +318,9 @@ class PlotSamples(tm.Metric):
             the predictions ('pred') and targets ('target') in the batch with
             the highest validation loss.
         """
+        if len(self.targets) == 0:
+            return {}
+
         try:
             from matplotlib import colormaps
             from matplotlib.cm import ScalarMappable

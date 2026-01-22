@@ -1,4 +1,10 @@
-#!/usr/bin/env python3
+"""
+satrain_models.encoder_decoder
+==============================
+
+Implements a generic encoder-decoder architecture that can be used to build UNet type models with
+different convolution blocks.
+"""
 
 import torch
 import torch.nn as nn
@@ -6,6 +12,8 @@ import torch.nn.functional as F
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Callable, List, Protocol, Union, Optional, Tuple, Dict, Any
+
+from satrain_models.config import SatRainConfig
 
 # Try to import TOML library (tomllib in Python 3.11+, tomli for older versions)
 try:
@@ -608,3 +616,67 @@ class EncoderDecoderConfig:
         
         with open(toml_path, "wb") as f:
             tomli_w.dump(config_dict, f)
+
+
+def compile_model(
+        model_config_path: Union[str, Path],
+        satrain_config_path: Union[str, Path],
+) -> EncoderDecoder:
+    """
+    Load Encoder-Decoder Model.
+
+    Args:
+        model_path: Path of the trained model.
+
+    Return:
+        A tuple ``(model, satrfain_config)`` containing the loaded model and the SatRain dataset
+        configuration used to train the model.
+    """
+    model_config_path = Path(model_config_path)
+    model_config = EncoderDecoderConfig.from_toml_file(model_config_path)
+    satrain_config = SatRainConfig.from_toml_file(satrain_config_path)
+    block_factory = globals()[model_config.block_factory]
+    model = EncoderDecoder(
+        block_factory=block_factory,
+        in_channels=satrain_config.num_features,
+        channels=model_config.channels,
+        depths=model_config.depths,
+        out_channels=model_config.out_channels,
+        bilinear=model_config.bilinear,
+    )
+    return model, satrain_config
+
+
+def load_model(model_path: Union[str, Path]) -> EncoderDecoder:
+    """
+    Load Encoder-Decoder Model.
+
+    Args:
+        model_path: Path of the trained model.
+
+    Return:
+        A tuple ``(model, satrfain_config)`` containing the loaded model and the SatRain dataset
+        configuration used to train the model.
+    """
+    model_path = Path(model_path)
+
+    loaded = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
+    state = loaded["state_dict"]
+    # Remove model prefix for checkpoint files.
+    if model_path.suffix == ".ckpt":
+        state = {key[6:]: val for key, val in state.items()}
+
+    satrain_config = SatRainConfig(**loaded["satrain_config"])
+    model_config = EncoderDecoderConfig(**loaded["model_config"])
+    block_factory = globals()[model_config.block_factory]
+    # Create model
+    model = EncoderDecoder(
+        block_factory=block_factory,
+        in_channels=satrain_config.num_features,
+        channels=model_config.channels,
+        depths=model_config.depths,
+        out_channels=model_config.out_channels,
+        bilinear=model_config.bilinear,
+    )
+    model.load_state_dict(state)
+    return model, satrain_config

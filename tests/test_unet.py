@@ -13,7 +13,7 @@ class TestUNet:
 
         assert model.n_channels == 3
         assert model.n_outputs == 1
-        assert model.bilinear == False
+        assert model.bilinear == True
 
         # Check that all layers are properly initialized
         assert hasattr(model, "inc")

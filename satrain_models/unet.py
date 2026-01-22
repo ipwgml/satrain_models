@@ -74,10 +74,12 @@ class Up(nn.Module):
             self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
             self.conv = DoubleConv(in_channels, out_channels)
         else:
+            skip_channels = out_channels
+            base_channels = in_channels - skip_channels
             self.up = nn.ConvTranspose2d(
-                in_channels, in_channels // 2, kernel_size=2, stride=2
+                base_channels, base_channels // 2, kernel_size=2, stride=2
             )
-            self.conv = DoubleConv(in_channels, out_channels)
+            self.conv = DoubleConv(base_channels, out_channels)
 
     def forward(
             self,
