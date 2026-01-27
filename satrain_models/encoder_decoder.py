@@ -316,6 +316,279 @@ class Conv2dLnReLU(nn.Module):
         return x
 
 
+class Reflect(nn.Module):
+    """
+    Pad input by reflecting the input tensor.
+    """
+    def __init__(self, pad: Union[int, Tuple[int]]):
+        """
+        Instantiates a padding layer.
+
+        Args:
+            pad: N-tuple defining the padding added to the n-last dimensions
+                of the tensor. If an int, the same padding will be added to the
+                two last dimensions of the tensor.
+        """
+        super().__init__()
+        if isinstance(pad, int):
+            pad = (pad,) * 2
+
+        full_pad = []
+        for n_elems in pad:
+            if isinstance(n_elems, (tuple, list)):
+                full_pad += [n_elems[0], n_elems[1]]
+            elif isinstance(n_elems, int):
+                full_pad += [n_elems, n_elems]
+            else:
+                raise ValueError(
+                    "Expected elements of pad tuple to be tuples of integers or integers. "
+                    "Got %s.", type(n_elems)
+                )
+
+        full_pad = tuple(full_pad[::-1])
+        self.pad = full_pad
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Add padding to tensor.
+
+        Args:
+            x: The input tensor.
+
+        Return:
+            The padded tensor.
+        """
+        return nn.functional.pad(x, self.pad, "reflect")
+
+def get_projection(
+        in_channels: int,
+        out_channels: int,
+        stride: Tuple[int],
+        anti_aliasing: bool = False,
+        padding_factory: Callable[[Tuple[int]], nn.Module] = Reflect
+):
+    """
+    Get a projection module that adapts an input tensor to a smaller input tensor that is
+    downsampled using the strides defined in 'stride'.
+
+    Args:
+        in_channels: The number of channels in the input tensor.
+        out_channels: The number of channels in the output tensor.
+        stride: The stride by which the input should be downsampled.
+        anti_aliasing: Wether or not to apply anti-aliasing before downsampling.
+        padding_factory: A factor for producing the padding blocks used in the model.
+
+    Return:
+        A projection module to project the input to the dimensions of the output.
+    """
+    if max(stride) == 1:
+        if in_channels == out_channels:
+            return nn.Identity()
+        if len(stride) == 3:
+            return nn.Conv3d(in_channels, out_channels, kernel_size=1)
+        return nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+
+    blocks = []
+
+    if anti_aliasing:
+        pad = tuple([1 if strd > 1 else 0 for strd in stride])
+        filter_size = tuple([3 if strd > 1 else 1 for strd in stride])
+        strd = (1,) * len(stride)
+        blocks += [
+            padding_factory(pad),
+            BlurPool(in_channels, strd, filter_size)
+        ]
+
+    if len(stride) == 3:
+        blocks.append(
+            nn.Conv3d(in_channels, out_channels, kernel_size=stride, stride=stride)
+        )
+    else:
+        blocks.append(
+            nn.Conv2d(in_channels, out_channels, kernel_size=stride, stride=stride)
+        )
+    return nn.Sequential(*blocks)
+
+
+class Reflect(nn.Module):
+    """
+    Pad input by reflecting the input tensor.
+    """
+    def __init__(self, pad: Union[int, Tuple[int]]):
+        """
+        Instantiates a padding layer.
+
+        Args:
+            pad: N-tuple defining the padding added to the n-last dimensions
+                of the tensor. If an int, the same padding will be added to the
+                two last dimensions of the tensor.
+        """
+        super().__init__()
+        if isinstance(pad, int):
+            pad = (pad,) * 2
+
+        full_pad = []
+        for n_elems in pad:
+            if isinstance(n_elems, (tuple, list)):
+                full_pad += [n_elems[0], n_elems[1]]
+            elif isinstance(n_elems, int):
+                full_pad += [n_elems, n_elems]
+            else:
+                raise ValueError(
+                    "Expected elements of pad tuple to be tuples of integers or integers. "
+                    "Got %s.", type(n_elems)
+                )
+
+        full_pad = tuple(full_pad[::-1])
+        self.pad = full_pad
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Add padding to tensor.
+
+        Args:
+            x: The input tensor.
+
+        Return:
+            The padded tensor.
+        """
+        return nn.functional.pad(x, self.pad, "reflect")
+
+
+class LayerNormFirst(nn.Module):
+    """
+    Layer norm performed along the first dimension.
+    """
+
+    def __init__(self, n_channels, eps=1e-5):
+        """
+        Args:
+            n_channels: The number of channels in the input.
+            eps: Epsilon added to variance to avoid numerical issues. """
+        super().__init__()
+        self.n_channels = n_channels
+        self.scaling = nn.Parameter(torch.ones(n_channels), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(n_channels), requires_grad=True)
+        self.eps = eps
+
+    def forward(self, x):
+        """
+        Apply normalization to x.
+        """
+        dtype = x.dtype
+        mu = x.mean(1, keepdim=True)
+        x_n = (x - mu).to(dtype=torch.float32)
+        var = x_n.pow(2).mean(1, keepdim=True)
+        x_n = x_n / torch.sqrt(var + self.eps)
+        shape_ext = (self.n_channels,) + (1,) * (x_n.dim() - 2)
+        x = self.scaling.reshape(shape_ext) * x_n.to(dtype=dtype) + self.bias.reshape(shape_ext)
+        return x
+
+
+class InvertedBottleneck(nn.Module):
+    """
+    Inverted-bottleneck block is used in MobileNet and Efficient net where it is referred
+    to as MBConv
+    """
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        downsample: Optional[Tuple[int, int]] = None,
+        stage_ind: int = 0,
+        block_ind: int = 0
+    ):
+        super().__init__()
+        self.act = nn.GELU()
+        act = nn.GELU()
+
+        expansion_factors = {
+            0: 1,
+            1: 4,
+            2: 4,
+            3: 5,
+            4: 6,
+            4: 6
+        }
+        expansion_factor = expansion_factors.get(stage_ind, 2)
+
+        hidden_channels = out_channels * expansion_factor
+
+        stride = (1, 1)
+        if downsample is not None:
+            if isinstance(downsample, int):
+                downsample = (downsample,) * 2
+            if max(downsample) > 1:
+                stride = downsample
+
+        self.projection = get_projection(
+            in_channels,
+            out_channels,
+            stride=stride,
+        )
+
+        fused = 2 <= stage_ind
+
+        blocks = []
+        if not fused:
+            blocks += [
+                nn.Conv2d(in_channels, hidden_channels, kernel_size=1),
+                LayerNormFirst(hidden_channels),
+                act
+            ]
+
+            blocks += [
+                Reflect(1),
+                nn.Conv2d(
+                    hidden_channels,
+                    hidden_channels,
+                    kernel_size=3,
+                    stride=stride,
+                    groups=hidden_channels,
+                ),
+                LayerNormFirst(hidden_channels),
+                act
+            ]
+        else:
+            blocks += [
+                Reflect(1),
+                nn.Conv2d(
+                    in_channels,
+                    hidden_channels,
+                    kernel_size=3,
+                    stride=stride,
+                ),
+                LayerNormFirst(hidden_channels),
+                act
+            ]
+
+        blocks += [
+            nn.Conv2d(hidden_channels, out_channels, kernel_size=1),
+            LayerNormFirst(out_channels),
+            act
+        ]
+        self.body = nn.Sequential(*blocks)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Propagate input through layer.
+        """
+        shortcut = self.projection(x)
+
+        ## Apply stochastic depth.
+        #if self.stochastic_depth is not None and self.training:
+        #    p = torch.rand(1)
+        #    if p <= self.stochastic_depth:
+        #        return shortcut + self.body(x)
+        #    return shortcut
+
+        return shortcut + self.body(x)
+
+
 class EncoderStage(nn.Module):
     """
     An encoder stage containing multiple convolution blocks.
