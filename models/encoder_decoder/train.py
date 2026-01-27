@@ -59,6 +59,9 @@ def main():
     """Main training function - all configuration from TOML files."""
     parser = argparse.ArgumentParser(description="Train EncoderDecoder model")
     parser.add_argument("model_config", help="Path to model configuration TOML file")
+    parser.add_argument(
+        "--dataset-config", help="Path to dataset config file.", default="dataset.toml"
+    )
     args = parser.parse_args()
 
     # Load model configuration
@@ -69,7 +72,7 @@ def main():
     LOGGER.info(f"Loaded model config from: {model_config_path}")
 
     # Load dataset configuration
-    dataset_config_path = Path("dataset.toml")
+    dataset_config_path = Path(args.dataset_config)
     if not dataset_config_path.exists():
         raise FileNotFoundError(f"Dataset config not found: {dataset_config_path}")
     config = SatRainConfig.from_toml_file(dataset_config_path)
@@ -100,12 +103,16 @@ def main():
     
     LOGGER.info(f"Created {model_config.model_name} with {encoder_decoder_model.num_parameters:,} parameters")
 
+    # Create experiment name that includes dataset configuration
+    dataset_prefix = config.get_experiment_name_prefix("encoder_decoder")
+    full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
+    
     # Create Lightning module with custom name
     lightning_module = SatRainEstimationModule(
         model=encoder_decoder_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
-        name=model_config.model_name,
+        name=full_experiment_name,
     )
     experiment_name = lightning_module.experiment_name
 

@@ -40,10 +40,10 @@ BLOCK_CLASSES = {
 
 def create_encoder_decoder_from_config(model_config: EncoderDecoderConfig, num_features: int) -> EncoderDecoder:
     """Create EncoderDecoder model from configuration."""
-    block_class = BLOCK_CLASSES[model_config.block_class]
+    block_factory = BLOCK_CLASSES[model_config.block_factory]
     
     return EncoderDecoder(
-        block_class=block_class,
+        block_factory=block_factory,
         in_channels=num_features,
         channels=model_config.channels,
         depths=model_config.depths,
@@ -151,7 +151,7 @@ def main():
         "experiment_name": experiment_name,
         
         # Model architecture details
-        "block_class": model_config.block_class,
+        "block_factory": model_config.block_factory,
         "in_channels": model_config.in_channels,
         "out_channels": model_config.out_channels,
         "channels": str(model_config.channels),  # Convert list to string for NetCDF
