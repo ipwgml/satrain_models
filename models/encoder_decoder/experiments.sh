@@ -1,0 +1,6 @@
+#python train.py  model_conv2dbnrelu_d1.toml
+#python train.py  model_conv2dbnrelu_d2.toml
+#python train.py  model_gprof_nn_d1.toml
+python train.py  model_gprof_nn_d0.toml
+#python test.py models/resnext_in3_ch64x128x256x512x1024_d4_out1_bilinear_adamw_warmup_cosine_annealing_restarts_v00.pt
+#python test.py models/resnext_in3_ch64x128x256x512x1024_d2_out1_bilinear_adamw_warmup_cosine_annealing_restarts_v00.pt

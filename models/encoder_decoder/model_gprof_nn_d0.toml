@@ -1,0 +1,7 @@
+# Sample EncoderDecoder configuration with ResNeXt blocks
+block_factory = "InvertedBottleneck"
+in_channels = 3  # Will be overridden by dataset features
+channels = [29, 58, 77, 154, 192, 307]
+depths = [1, 1, 2, 2, 3, 4]
+out_channels = 1
+bilinear = true  # Use transpose convolution for upsampling
