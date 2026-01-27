@@ -4,6 +4,7 @@ satrain_models.unet
 
 Provides an implementation of a basic PyTorch UNet.
 """
+
 from typing import Optional
 
 import torch
@@ -17,10 +18,7 @@ class DoubleConv(nn.Module):
     """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            mid_channels: Optional[int] = None
+        self, in_channels: int, out_channels: int, mid_channels: Optional[int] = None
     ):
         super().__init__()
         if not mid_channels:
@@ -43,11 +41,7 @@ class Down(nn.Module):
     Downsampling block.
     """
 
-    def __init__(
-            self,
-            in_channels: int,
-            out_channels: int
-    ):
+    def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2), DoubleConv(in_channels, out_channels)
@@ -62,12 +56,7 @@ class Up(nn.Module):
     Upsampling using bilinear or transpose convolution.
     """
 
-    def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            bilinear: bool = True
-    ):
+    def __init__(self, in_channels: int, out_channels: int, bilinear: bool = True):
         super().__init__()
 
         if bilinear:
@@ -81,11 +70,7 @@ class Up(nn.Module):
             )
             self.conv = DoubleConv(base_channels, out_channels)
 
-    def forward(
-            self,
-            x1: torch.Tensor,
-            x2: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
         x1 = self.up(x1)
 
         diffY = x2.size()[2] - x1.size()[2]
@@ -115,12 +100,7 @@ class UNet(nn.Module):
     A basic UNet encoder-decoder consisting of stem, four encoder stages, and four decoder stages.
     """
 
-    def __init__(
-            self,
-            n_channels: int,
-            n_outputs: int,
-            bilinear: bool = True
-    ):
+    def __init__(self, n_channels: int, n_outputs: int, bilinear: bool = True):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_outputs = n_outputs

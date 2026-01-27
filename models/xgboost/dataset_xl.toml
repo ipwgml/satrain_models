@@ -1,0 +1,10 @@
+base_sensor = "gmi"
+geometry = "on_swath"
+subset = "xl"
+format = "tabular"
+
+[[retrieval_input]]
+name = "gmi"
+include_angles = false
+normalize = "minmax"
+nan = -1.5

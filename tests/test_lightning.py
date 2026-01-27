@@ -1,12 +1,12 @@
 """
 Tests for the satrain_models.lightning module.
 """
+
 from pathlib import Path
 
+import lightning as L
 import numpy as np
 import pytest
-
-import lightning as L
 import satrain
 import satrain.data
 import torch
@@ -16,7 +16,6 @@ from satrain_models import create_unet
 from satrain_models.config import ComputeConfig, SatRainConfig
 from satrain_models.datamodule import SatRainDataModule
 from satrain_models.lightning import SatRainEstimationModule
-
 
 # Use SatRain in test mode.
 satrain.data.enable_testing()
@@ -32,7 +31,7 @@ def cpu_compute_config():
         accelerator="cpu",
         devices=1,
         max_epochs=1,
-        precision="32"
+        precision="32",
     )
     return config
 
@@ -51,18 +50,20 @@ def satrain_config_spatial():
     return config
 
 
-def test_lightning_module_spatial(satrain_config_spatial, cpu_compute_config, monkeypatch):
+def test_lightning_module_spatial(
+    satrain_config_spatial, cpu_compute_config, monkeypatch
+):
     """
     Test lightning module and evaluator in spatial format using a UNet.
     """
     monkeypatch.setattr(satrain.config, "CONFIG_DIR", Path("."))
 
-    data_module =  SatRainDataModule(
+    data_module = SatRainDataModule(
         satrain_config_spatial,
         batch_size=1,
         num_workers=0,
         pin_memory=False,
-        persistent_workers=False
+        persistent_workers=False,
     )
     data_module.setup()
 
@@ -99,7 +100,7 @@ def test_lightning_module_spatial(satrain_config_spatial, cpu_compute_config, mo
         overlap=8,
         retrieval_fn=retrieval_fn,
         input_data_format="spatial",
-        track=False
+        track=False,
     )
     assert np.any(np.isfinite(results.surface_precip.data))
 
@@ -117,18 +118,21 @@ def satrain_config_tabular():
     )
     return config
 
-def test_lightning_module_tabular(satrain_config_tabular, cpu_compute_config, monkeypatch):
+
+def test_lightning_module_tabular(
+    satrain_config_tabular, cpu_compute_config, monkeypatch
+):
     """
     Test lightning module and evaluator in tabular format using a simple MLP.
     """
     monkeypatch.setattr(satrain.config, "CONFIG_DIR", Path("."))
 
-    data_module =  SatRainDataModule(
+    data_module = SatRainDataModule(
         satrain_config_tabular,
         batch_size=32,
         num_workers=0,
         pin_memory=False,
-        persistent_workers=False
+        persistent_workers=False,
     )
     data_module.setup()
 
@@ -166,6 +170,6 @@ def test_lightning_module_tabular(satrain_config_tabular, cpu_compute_config, mo
         overlap=8,
         retrieval_fn=retrieval_fn,
         input_data_format="tabular",
-        track=False
+        track=False,
     )
     assert np.any(np.isfinite(results.surface_precip.data))

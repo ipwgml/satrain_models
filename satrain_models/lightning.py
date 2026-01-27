@@ -57,7 +57,7 @@ class SatRainEstimationModule(L.LightningModule):
         loss: nn.Module = nn.MSELoss(),
         approach: str = "adamw_warmup_cosine_annealing",
         learning_rate: Optional[float] = None,
-        name: Optional[str] = None
+        name: Optional[str] = None,
     ):
         """
         Args:
@@ -74,6 +74,8 @@ class SatRainEstimationModule(L.LightningModule):
         valid = {
             "sgd_lr_search",
             "adamw_lr_search",
+            "sgd",
+            "adamw",
             "sgd_reduce_on_plateau",
             "adamw_reduce_on_plateau",
             "sgd_warmup_cosine_annealing",
@@ -306,6 +308,53 @@ class SatRainEstimationModule(L.LightningModule):
                 "monitor": "val/loss",
             }
             return [optimizer], [scheduler_conf]
+
+        # Learning rate search with AdamW
+        if hp.approach == "adamw_lr_search":
+            LOGGER.info(
+                "Performing learning rate search with AdamW optimizer across %s steps.",
+                self.trainer.estimated_stepping_batches,
+            )
+            lr = 1e-6
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=lr,
+            )
+            scheduler = StepLR(
+                optimizer,
+                gamma=1e5 ** (1 / 100),
+                step_size=1,
+            )
+            scheduler_conf = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "monitor": "val/loss",
+            }
+            return [optimizer], [scheduler_conf]
+
+        # SGD, no LR schedule
+        if hp.approach == "sgd":
+            LOGGER.info("Running training with SGD optimizer, no LR schedule.")
+            if lr is None:
+                lr = 0.01
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=lr,
+                momentum=0.9,
+                nesterov=True,
+            )
+            return optimizer
+
+        # ADAM, no LR schedule
+        if hp.approach == "adamw":
+            LOGGER.info("Running training with SGD optimizer, no LR schedule.")
+            if lr is None:
+                lr = 1e-3
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=lr,
+            )
+            return optimizer
 
         # Learning rate search with AdamW
         if hp.approach == "adamw_lr_search":
@@ -597,9 +646,7 @@ class SatRainEstimationModule(L.LightningModule):
             inpt = {}
             for name in satrain_config.features:
 
-                inpt_data = torch.tensor(input_data[name].data).to(
-                    device, dtype
-                )
+                inpt_data = torch.tensor(input_data[name].data).to(device, dtype)
                 if len(dims) == 1:
                     inpt_data = inpt_data.transpose(0, 1)
                 inpt[name] = inpt_data

@@ -142,7 +142,7 @@ class SatRainConfig:
 
     @property
     def features(self) -> int:
-        """Number of input features/channels."""
+        """Names of the input features"""
         features = []
         for inpt in self.retrieval_input:
             features += list(inpt.features.keys())
@@ -185,6 +185,48 @@ class SatRainConfig:
 
         with open(toml_path, "wb") as f:
             tomli_w.dump(config_dict, f)
+
+    def get_experiment_name_prefix(self, model_type: str) -> str:
+        """Generate experiment name prefix based on dataset configuration.
+
+        Args:
+            model_type: Type of model (e.g., "unet", "xgboost", "random_forest")
+
+        Returns:
+            String prefix for experiment naming
+        """
+        # Start with model type
+        parts = [model_type]
+
+        # Add sensor
+        parts.append(self.base_sensor)
+
+        # Add retrieval input names
+        if self.retrieval_input:
+            input_names = []
+            for inpt in self.retrieval_input:
+                if hasattr(inpt, "name"):
+                    # Use name attribute (prioritized)
+                    input_names.append(inpt.name)
+                elif hasattr(inpt, "__class__"):
+                    # Fallback to class name (lowercased)
+                    input_names.append(inpt.__class__.__name__.lower())
+            if input_names:
+                parts.append("+".join(sorted(input_names)))
+
+        # Add geometry
+        if self.geometry:
+            parts.append(self.geometry)
+
+        # Add subset
+        if self.subset:
+            parts.append(self.subset)
+
+        # Add format if not spatial (spatial is default)
+        if self.format and self.format != "spatial":
+            parts.append(self.format)
+
+        return "_".join(parts)
 
 
 @dataclass

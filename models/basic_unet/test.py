@@ -3,6 +3,7 @@
 Clean PyTorch Lightning training script for UNet model on SatRain dataset.
 All configuration is read from TOML files.
 """
+
 import argparse
 import logging
 from pathlib import Path
@@ -47,7 +48,7 @@ def main():
         state = {key[6:]: val for key, val in state.items()}
 
     satrain_config = SatRainConfig(**loaded["satrain_config"])
-    satrain_config.retrieval_input[0].include_angles=False
+    satrain_config.retrieval_input[0].include_angles = False
     print(satrain_config)
     LOGGER.info(f"Loaded SatRain config from model file %s", model_path)
 

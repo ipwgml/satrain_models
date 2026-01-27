@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Optional, Union
 
 import lightning as L
+import numpy as np
+from satrain.data import load_tabular_data
 from satrain.evaluation import Evaluator
 from satrain.pytorch.datasets import SatRainSpatial, SatRainTabular
 from torch.utils.data import DataLoader
@@ -69,58 +71,7 @@ class SatRainDataModule(L.LightningDataModule):
 
     def _get_retrieval_input(self) -> list:
         """Extract retrieval input configuration from config."""
-        retrieval_input = []
-
-        # First try to use explicit retrieval_input from config
-        if hasattr(self.config, "retrieval_input") and self.config.retrieval_input:
-            retrieval_input = self.config.retrieval_input
-        # Build from all defined input sections (assume all are active)
-        elif hasattr(self.config, "inputs"):
-            inputs_obj = self.config.inputs
-            inputs_dict = (
-                inputs_obj if isinstance(inputs_obj, dict) else inputs_obj.__dict__
-            )
-
-            for input_name, input_config in inputs_dict.items():
-                # Convert input config to dictionary if it's an object
-                if hasattr(input_config, "__dict__"):
-                    input_dict = input_config.__dict__.copy()
-                else:
-                    input_dict = input_config.copy()
-
-                # Ensure the input has a name field
-                if "name" not in input_dict:
-                    input_dict["name"] = input_name
-
-                # Apply default values if not specified
-                if "normalize" not in input_dict:
-                    input_dict["normalize"] = "minmax"
-                if "nan" not in input_dict:
-                    input_dict["nan"] = -1.5
-                # Set channels to None (all channels) if not specified or empty list
-                if "channels" not in input_dict or input_dict["channels"] == []:
-                    input_dict["channels"] = None
-
-                retrieval_input.append(input_dict)
-        else:
-            # Default inputs with minmax normalization
-            retrieval_input = [
-                {
-                    "name": "gmi",
-                    "normalize": "minmax",
-                    "nan": -1.5,
-                    "channels": None,  # None means all channels
-                    "include_angles": True,
-                },
-                {
-                    "name": "geo",
-                    "normalize": "minmax",
-                    "nan": -1.5,
-                    "channels": None,  # None means all channels
-                },
-            ]
-
-        return retrieval_input
+        return self.config.retrieval_input
 
     def _create_dataset(self, split: str, augment: bool = False):
         """Create a dataset for the given split."""
@@ -216,6 +167,44 @@ class SatRainDataModule(L.LightningDataModule):
     def predict_dataloader(self):
         """Create prediction data loader (same as test for now)."""
         return self.test_dataloader()
+
+    def load_tabular_data(self, split: str):
+        """
+        Load data in tabular format suitable for non-PyTorch models like XGBoost.
+
+        Args:
+            split: Dataset split ('training', 'validation', or 'testing')
+
+        Returns:
+            Tuple of (input_data, target_data) where:
+            - input_data: numpy array of shape (n_samples, n_features)
+            - target_data: numpy array of shape (n_samples,)
+        """
+        retrieval_input = self._get_retrieval_input()
+
+        # Load tabular data using satrain.data.load_tabular_data
+        input_data, target = load_tabular_data(
+            dataset_name="satrain",
+            base_sensor=getattr(self.config, "base_sensor", "gmi"),
+            geometry=getattr(self.config, "geometry", "gridded"),
+            split=split,
+            subset=getattr(self.config, "subset", "xl"),
+            retrieval_input=retrieval_input,
+            target_config=getattr(self.config, "target_config", None),
+        )
+
+        target_time = target.time
+        y = target.surface_precip.data
+
+        input_arrays = []
+        for inpt in retrieval_input:
+            dataset = input_data[inpt.name].transpose("samples", ...)
+            input_data = inpt.load_data(dataset, target_time=target_time)
+            for array in input_data.values():
+                input_arrays.append(array.T)
+
+        X = np.concatenate(input_arrays, axis=1)
+        return X, y
 
     @property
     def num_classes(self) -> int:

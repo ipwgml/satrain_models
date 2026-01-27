@@ -1,0 +1,23 @@
+accelerator = "cuda"
+devices = [0]
+precision = "32"
+max_epochs = 100
+batch_size = 32
+approach = "xgboost_training"
+num_workers = 8
+pin_memory = true
+persistent_workers = false
+accumulate_grad_batches = 1
+log_every_n_steps = 1
+check_val_every_n_epoch = 1
+
+[xgboost]
+n_estimators = 1000
+max_depth = 6
+learning_rate = 0.1
+subsample = 0.8
+colsample_bytree = 0.8
+reg_alpha = 0
+reg_lambda = 1
+random_state = 42
+early_stopping_rounds = 50

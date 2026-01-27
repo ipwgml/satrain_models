@@ -3,6 +3,7 @@
 Clean PyTorch Lightning training script for UNet model on SatRain dataset.
 All configuration is read from TOML files.
 """
+
 import argparse
 import logging
 from pathlib import Path
@@ -28,11 +29,16 @@ def main():
     """Training function"""
 
     parser = argparse.ArgumentParser(description="Train basic UNet model")
-    parser.add_argument("compute_config", help="Path to compute config file.", default="compute.toml")
+    parser.add_argument(
+        "compute_config", help="Path to compute config file.", default="compute.toml"
+    )
+    parser.add_argument(
+        "--dataset-config", help="Path to dataset config file.", default="dataset.toml"
+    )
     args = parser.parse_args()
 
     # Load dataset configuration
-    dataset_config_path = Path("dataset.toml")
+    dataset_config_path = Path(args.dataset_config)
     if not dataset_config_path.exists():
         raise FileNotFoundError(f"Dataset config not found: {dataset_config_path}")
     config = SatRainConfig.from_toml_file(dataset_config_path)
@@ -59,11 +65,13 @@ def main():
         n_channels=datamodule.num_features, n_outputs=1, bilinear=True
     )
 
-    # Create Lightning module
+    # Create Lightning module with dataset-aware naming
+    experiment_prefix = config.get_experiment_name_prefix("unet")
     lightning_module = SatRainEstimationModule(
         model=unet_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
+        name=experiment_prefix,
     )
     experiment_name = lightning_module.experiment_name
 
@@ -95,7 +103,7 @@ def main():
     log_path = Path(current_log_dir)
     version_name = log_path.name
     metadata = {
-        "experiment": "basic_unet",
+        "experiment": experiment_prefix,
         "version": version_name,
         "approach": compute_config.approach,
     }

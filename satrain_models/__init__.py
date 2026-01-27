@@ -3,6 +3,7 @@
 from .config import ComputeConfig, SatRainConfig
 from .datamodule import SatRainDataModule
 from .lightning import SatRainEstimationModule
+from .random_forest import RandomForestRetrieval, create_random_forest_retrieval
 from .tensorboard_to_netcdf import (
     extract_all_training_runs,
     extract_scalars_from_tensorboard,
@@ -10,6 +11,7 @@ from .tensorboard_to_netcdf import (
     tensorboard_to_netcdf,
 )
 from .unet import UNet, create_unet
+from .xgboost import XGBoostRetrieval, create_xgboost
 
 __version__ = "0.1.0"
 __author__ = "SatRain Contributors"
@@ -17,6 +19,10 @@ __author__ = "SatRain Contributors"
 __all__ = [
     "UNet",
     "create_unet",
+    "XGBoostRetrieval",
+    "create_xgboost",
+    "RandomForestRetrieval",
+    "create_random_forest_retrieval",
     "create_swinunet",
     "SatRainConfig",
     "SatRainEstimationModule",
