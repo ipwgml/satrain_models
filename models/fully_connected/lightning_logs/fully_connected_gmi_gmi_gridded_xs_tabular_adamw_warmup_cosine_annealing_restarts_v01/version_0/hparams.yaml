@@ -1,3 +1,0 @@
-approach: adamw_warmup_cosine_annealing_restarts
-learning_rate: null
-name: fully_connected_gmi_gmi_gridded_xs_tabular
