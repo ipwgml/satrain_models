@@ -1,4 +1,4 @@
-# Basic UNet Model for SatRain Dataset
+# Fully Connected Network for SatRain Dataset
 
 This directory contains a Fully Connected implementation for training on the SatRain dataset using the lightning module and data module from the  `satrain_models` package.
 
@@ -13,7 +13,7 @@ This model trains a Fully Connected Network precipitation retrieval on the SatRa
 - `train.py`: Trains the model.
 - `test.py`: Evaluates the model on the SatRain test datasets.
 - `compute.toml`: Contains the configuration of the training and compute environment.
-- `dataset.toml`: Contains the configuation of the model.
+- `dataset.toml`: Contains the configuation of the dataset.
 - `requirements.txt`: Required packages to run the training.
 - `README.md`: This documentation file
 
@@ -58,7 +58,7 @@ This works for both final models stored in the ``models`` directory as well as c
 
 The configuration is split into two files for better organization:
 
-### Model Configuration (`dataset.toml`)
+### Dataset Configuration (`dataset.toml`)
 
 This file contains the configuration of the SatRain dataset. It is used to
 configure the subset, geometry, retrieval inputs, target configuration, and so
@@ -69,6 +69,10 @@ on.
 The compute configuration file contains settings related to the compute
 environment and training recipe. It can be used to configure the accelerator,
 devices used, optimizer and learning-rate schedule as well as training duration.
+
+If not explicitly specified - under [model_config.fully_connected], the model uses a fully connected neural network
+with two hidden layers and the following number of neurons per layer:
+hidden_layer = [8, 2]
 
 ## Logging and Monitoring
 

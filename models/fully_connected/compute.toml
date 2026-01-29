@@ -17,3 +17,6 @@ persistent_workers = false   # Keep workers alive between epochs
 accumulate_grad_batches = 1  # Gradient accumulation batches
 log_every_n_steps = 1        # Log metrics every N steps
 check_val_every_n_epoch = 1  # Validate every N epochs
+
+[model_config.fully_connected]
+hidden_layer = [12, 8, 4, 2]

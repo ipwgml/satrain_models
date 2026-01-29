@@ -51,7 +51,7 @@ def main():
     # LOGGER.info(f"Loaded SatRain config from model file %s", model_path)
 
     satrain_config = SatRainConfig(**loaded["satrain_config"])
-    satrain_config.retrieval_input[0].include_angles = False
+    #satrain_config.retrieval_input[0].include_angles = False
     print(satrain_config)
     LOGGER.info(f"Loaded SatRain config from model file %s", model_path)
 
@@ -74,7 +74,7 @@ def main():
     # Create model
     fully_connected_model = create_fully_connected(
         input_dim=satrain_config.num_features,
-        hidden_dims=[12,8,4,2])
+        hidden_dims=satrain_config.hidden_layer)
     fully_connected_model.load_state_dict(state)
 
     # Create Lightning module

@@ -53,6 +53,13 @@ def main():
     compute_config = ComputeConfig.from_toml_file(compute_config_path)
     LOGGER.info(f"Loaded compute config from: {compute_config_path}")
 
+    # if 'fully_connected' not in compute_config.model_config:
+    #     compute_config.model_config['fully_connected'] = {'hidden_layer': [8,2]}
+
+    # for cfg in compute_config.model_config['fully_connected']:
+    #     if 'hidden_layer' in cfg:
+    #         hidden_layer = compute_config.model_config['fully_connected']['hidden_layer']
+
     # Create data module
     datamodule = SatRainDataModule(
         config=config,
@@ -61,10 +68,10 @@ def main():
         pin_memory=compute_config.pin_memory,
         persistent_workers=compute_config.persistent_workers,
     )
-
+    
     # Create model
     fully_connected_model = create_fully_connected(
-        input_dim=datamodule.num_features, hidden_dims=[12,8,4,2])
+        input_dim=datamodule.num_features, hidden_dims=config.hidden_layer)
     
     # Create Lightning module with dataset-aware naming
     experiment_prefix = config.get_experiment_name_prefix("fully_connected")
