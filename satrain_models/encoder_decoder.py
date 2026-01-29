@@ -672,7 +672,7 @@ class DecoderStage(nn.Module):
                 scale_factor=2, mode="bilinear", align_corners=True
             )
 
-    def forward(self, x: torch.Tensor, x_sc: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_sc: Optional[torch.Tensor]=None) -> torch.Tensor:
         """
         Args:
             x: The output from the previous stage.
@@ -683,7 +683,8 @@ class DecoderStage(nn.Module):
         """
         if self.upsample is not None:
             x = self.upsample(x)
-        x = torch.cat((x, x_sc), 1)
+        if x_sc is not None:
+            x = torch.cat((x, x_sc), 1)
         return self.blocks(x)
 
 

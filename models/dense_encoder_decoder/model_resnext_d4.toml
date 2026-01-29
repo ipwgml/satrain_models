@@ -1,0 +1,7 @@
+# Sample EncoderDecoder configuration with ResNeXt blocks
+block_factory = "ResNeXtBlock"
+in_channels = 3  # Will be overridden by dataset features
+channels = [64, 128, 256, 512, 1024]
+depths = [4, 4, 4, 4, 4]  # ResNeXt blocks are more complex, so fewer per stage
+out_channels = 1
+bilinear = true  # Use transpose convolution for upsampling
