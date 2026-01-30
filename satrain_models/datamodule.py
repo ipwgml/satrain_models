@@ -94,9 +94,8 @@ class SatRainDataModule(L.LightningDataModule):
             return SatRainSpatial(**dataset_kwargs)
         else:
             # SatRainTabular specific arguments
-            dataset_kwargs["shuffle"] = (
-                augment  # Use shuffle instead of augment for tabular
-            )
+            dataset_kwargs["shuffle"] = augment
+            dataset_kwargs["batch_size"] = self.batch_size
             return SatRainTabular(**dataset_kwargs)
 
     def prepare_data(self):
@@ -132,21 +131,28 @@ class SatRainDataModule(L.LightningDataModule):
 
     def train_dataloader(self):
         """Create training data loader."""
+        if self.config.format == "spatial":
+            batch_size = self.batch_size
+        else:
+            batch_size = None
         return DataLoader(
             self.train_dataset,
-            batch_size=self.batch_size,
+            batch_size=batch_size,
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
-            drop_last=True,  # Drop incomplete batches for consistent training
         )
 
     def val_dataloader(self):
         """Create validation data loader."""
+        if self.config.format == "spatial":
+            batch_size = batch_size
+        else:
+            batch_size = None
         return DataLoader(
             self.val_dataset,
-            batch_size=self.batch_size,
+            batch_size=batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
@@ -155,9 +161,13 @@ class SatRainDataModule(L.LightningDataModule):
 
     def test_dataloader(self):
         """Create test data loader."""
+        if self.config.format == "spatial":
+            batch_size = self.batch_size
+        else:
+            batch_size = None
         return DataLoader(
             self.test_dataset,
-            batch_size=self.batch_size,
+            batch_size=batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
