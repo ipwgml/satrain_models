@@ -129,8 +129,11 @@ class ResNeXtBlock(nn.Module):
     ):
         super().__init__()
 
+
         # Calculate bottleneck channels
         width = int(out_channels * (bottleneck_width / 64.0)) * cardinality
+
+        print(in_channels, width, out_channels)
 
         # Determine stride for downsampling
         stride = downsample if downsample is not None else (1, 1)
@@ -157,18 +160,31 @@ class ResNeXtBlock(nn.Module):
 
         # Residual connection
         self.residual = None
-        if in_channels != out_channels or downsample is not None:
-            self.residual = nn.Sequential(
-                nn.Conv2d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=3,
-                    stride=stride,
-                    bias=False,
-                    padding=1,
-                ),
-                nn.BatchNorm2d(out_channels),
-            )
+        if in_channels != out_channels:
+            if downsample is not None:
+                self.residual = nn.Sequential(
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=3,
+                        stride=stride,
+                        bias=False,
+                        padding=1,
+                    ),
+                    nn.BatchNorm2d(out_channels),
+                )
+            else:
+                self.residual = nn.Sequential(
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=1,
+                        stride=stride,
+                        bias=False,
+                    ),
+                    nn.BatchNorm2d(out_channels),
+                )
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
