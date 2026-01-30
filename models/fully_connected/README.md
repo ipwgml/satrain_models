@@ -58,21 +58,22 @@ This works for both final models stored in the ``models`` directory as well as c
 
 The configuration is split into two files for better organization:
 
-### Dataset Configuration (`dataset.toml`)
+### Dataset/Model Configuration (`dataset.toml`)
 
 This file contains the configuration of the SatRain dataset. It is used to
 configure the subset, geometry, retrieval inputs, target configuration, and so
 on.
+
+** added a new optional field hidden layer to dataset.toml
+If not explicitly specified - under hidden_layer, the model uses a fully connected neural network
+with two hidden layers and the following number of neurons per layer:
+hidden_layer = [8, 2]
 
 ### Compute Configuration (`compute.toml`) 
 
 The compute configuration file contains settings related to the compute
 environment and training recipe. It can be used to configure the accelerator,
 devices used, optimizer and learning-rate schedule as well as training duration.
-
-If not explicitly specified - under [model_config.fully_connected], the model uses a fully connected neural network
-with two hidden layers and the following number of neurons per layer:
-hidden_layer = [8, 2]
 
 ## Logging and Monitoring
 
