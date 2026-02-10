@@ -147,7 +147,7 @@ class SatRainDataModule(L.LightningDataModule):
     def val_dataloader(self):
         """Create validation data loader."""
         if self.config.format == "spatial":
-            batch_size = batch_size
+            batch_size = self.batch_size
         else:
             batch_size = None
         return DataLoader(
