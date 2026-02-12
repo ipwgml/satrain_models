@@ -78,10 +78,12 @@ def main():
     fully_connected_model.load_state_dict(state)
 
     # Create Lightning module
+    experiment_prefix = satrain_config.get_experiment_name_prefix("fully_connected")
     lightning_module = SatRainEstimationModule(
         model=fully_connected_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
+        name=experiment_prefix,
     )
     experiment_name = lightning_module.experiment_name
 
