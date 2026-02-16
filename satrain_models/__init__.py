@@ -4,6 +4,7 @@ from .config import ComputeConfig, SatRainConfig
 from .datamodule import SatRainDataModule
 from .lightning import SatRainEstimationModule
 from .random_forest import RandomForestRetrieval, create_random_forest_retrieval
+from .resnet import ResNet, create_resnet  # veljko
 from .tensorboard_to_netcdf import (
     extract_all_training_runs,
     extract_scalars_from_tensorboard,
@@ -20,6 +21,8 @@ __author__ = "SatRain Contributors"
 __all__ = [
     "UNet",
     "create_unet",
+    "ResNet",  # veljko
+    "create_resnet",  # veljko
     "FullyConnectedNetwork",
     "create_fully_connected",
     "XGBoostRetrieval",
@@ -28,6 +31,7 @@ __all__ = [
     "create_random_forest_retrieval",
     "create_swinunet",
     "SatRainConfig",
+    "ComputeConfig",  # veljko
     "SatRainEstimationModule",
     "SatRainDataModule",
     "extract_scalars_from_tensorboard",

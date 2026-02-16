@@ -1,0 +1,19 @@
+# === Hardware Configuration ===
+accelerator = "gpu"          # "cpu", "gpu", "mps", "auto"
+devices = [0,1]              # Number of devices (integer for CPU, list [0,1] for GPUs)
+precision = "16-mixed"       # Mixed precision for ~2x speedup on GPU
+
+# === Training Configuration ===
+max_epochs = 100             # Overnight training with XL dataset
+batch_size = 8               # Training batch size (per GPU); 8 if 'gridded'; 128 if 'on_swath'
+approach = "adamw_warmup_cosine_annealing_restarts"
+
+# === Data Loading ===
+num_workers = 16
+pin_memory = true            # Pin memory for faster GPU transfer
+persistent_workers = true    # Keep workers alive between epochs
+
+# === Training Control ===
+accumulate_grad_batches = 16 # Gradient accumulation batches; 16 if 'gridded'; 1 if 'on_swath'
+log_every_n_steps = 10       # Log metrics every N steps
+check_val_every_n_epoch = 1  # Validate every N epochs
