@@ -4,7 +4,7 @@ from satrain_models.bmci import BMCI
 from satrain_models.datamodule import SatRainDataModule
 
 
-def test_bmci_retrieval_no_cutoff(tmp_path):
+def test_bmci_retrieval_no_cutoff(tmp_path, satrain_test_data):
     """
     Test that a simple GMI retrieval yields reasonable correlations
     and can be saved.
@@ -14,7 +14,7 @@ def test_bmci_retrieval_no_cutoff(tmp_path):
             "base_sensor": "gmi",
             "geometry": "on_swath",
             "format": "tabular",
-            "subset": "xs",
+            "subset": "xl",
             "retrieval_input": [{
                 "name": "gmi",
                 "include_angles": False

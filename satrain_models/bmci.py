@@ -4,11 +4,17 @@ satrain_models.bmci
 
 Implements Bayesian Monte-Carlo Integration as a retrieval technique.
 """
+import logging
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor
 
+from tqdm import tqdm
 from typing import Optional
 import numpy as np
 import xarray as xr
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class BMCI:
@@ -16,8 +22,9 @@ class BMCI:
     Precipitation retrieval using Bayesian Monte Carlo Integration (BMCI).
 
     The retrieval assumes independent retrieval errors. To speed up the
-    retrieval, an optional cutoff can be applied to discard samples with
-    weights lower than a given threshold.
+    retrieval, an optional cutoff can be applied as the number of standard
+    deviations along the primary axis to consider, creating deterministic
+    summation bounds for numerical stability.
 
     The retrieval ignores NAN values.
     """
@@ -30,12 +37,16 @@ class BMCI:
         Args:
             sigma: A vector containing the observation uncertainties
                 for each channels.
-            cutoff: If given, samples with a weight smaller than this will be neglected. This can significantly speed
-                up the retrieval.
+            cutoff: If given, number of standard deviations along the primary axis to consider.
+                This creates deterministic summation bounds for numerical stability.
         """
         self.primary_axis = np.argmin(sigma)
-        self.Sinv = 1 /  sigma ** 2
+        self.Sinv = 1 / sigma ** 2
         self.cutoff = cutoff
+        if cutoff is not None:
+            self.delta_t = cutoff * sigma[self.primary_axis]
+        else:
+            self.delta_t = None
         self.X = None
         self.y = None
 
@@ -77,46 +88,107 @@ class BMCI:
         Return:
             The retrieved precipitation value.
         """
-        valid = np.where(np.isfinite(x))[0]
         a_p = self.primary_axis
-        x = x[valid]
-        # Calculate over all samples if not cutoff is given.
-        if cutoff is None or a_p not in valid:
-            d_x = self.X[:, valid] - x.reshape(1, -1)
+        
+        # Check if primary axis is valid
+        if not np.isfinite(x[a_p]):
+            return np.nan
+        
+        # Calculate over all samples if no cutoff is given.
+        if cutoff is None:
+            # Handle NaN values during distance calculation
+            valid_mask = np.isfinite(x)
+            d_x = self.X[:, valid_mask] - x[valid_mask].reshape(1, -1)
             weights = np.exp(
-                -1.0 * (d_x * d_x * self.Sinv[None, valid]).sum(axis=-1)
+                -0.5 * (d_x * d_x * self.Sinv[None, valid_mask]).sum(axis=-1)
             )
-            weights /= weights.sum()
-            return (self.y * weights).sum(0)
+            weight_sum = weights.sum()
+            if weight_sum == 0.0:
+                return np.nan
+            return (self.y * weights).sum() / weight_sum
 
-        c_ind = np.searchsorted(self.X[:, a_p], x[a_p])
-        d_x = self.X[c_ind, valid] - x
-        base_weight = np.exp(-1.0 * (d_x * self.Sinv[valid] * d_x).sum())
+        # Use deterministic bounds based on standard deviations along primary axis
+        primary_val = x[a_p]
+        lower_bound = primary_val - self.delta_t
+        upper_bound = primary_val + self.delta_t
+        
+        # Find indices using binary search
+        lower_ind = np.searchsorted(self.X[:, a_p], lower_bound, side='left')
+        upper_ind = np.searchsorted(self.X[:, a_p], upper_bound, side='right')
+        
+        if lower_ind >= upper_ind:
+            # No samples in range, return NaN
+            return np.nan
+        
+        # Calculate weights for samples in the determined range
+        # Handle NaN values during distance calculation
+        valid_mask = np.isfinite(x)
+        dx = self.X[lower_ind:upper_ind][:, valid_mask] - x[valid_mask].reshape(1, -1)
+        weights = np.exp(-0.5 * (dx * dx * self.Sinv[None, valid_mask]).sum(-1))
+        weight_sum = weights.sum()
+        
+        if weight_sum == 0.0:
+            return np.nan
+        
+        return (self.y[lower_ind:upper_ind] * weights).sum() / weight_sum
 
-        step = self.X.shape[0] // 100
-
-        # Find lower bound by increasing search bounds.
-        lower_ind = max(c_ind - 1000, 0)
-        d_x = self.X[lower_ind, valid] - x
-        max_weight = np.exp(-1.0 * (d_x[a_p] * self.Sinv[a_p] * d_x[a_p]))
-        while (0 < lower_ind) and (cutoff < (max_weight / base_weight)):
-            lower_ind = max(lower_ind - 1000, 0)
-            d_x = self.X[lower_ind, valid] - x
-            max_weight = np.exp(-1.0 * (d_x[a_p] * self.Sinv[a_p] * d_x[a_p]))
-
-        # Find upper bound by increasing search bounds.
-        upper_ind = min(c_ind + 1000, self.X.shape[0] - 1)
-        d_x = self.X[upper_ind, valid] - x
-        max_weight = np.exp(-1.0 * (d_x[a_p] * self.Sinv[a_p] * d_x[a_p]))
-        while (upper_ind < self.X.shape[0] - 1) and (cutoff < (max_weight / base_weight)):
-            upper_ind = min(upper_ind + 1000, self.X.shape[0] - 1)
-            d_x = self.X[upper_ind, valid] - x
-            max_weight = np.exp(-1.0 * (d_x[a_p] * self.Sinv[a_p] * d_x[a_p]))
-
-        dx = self.X[lower_ind:upper_ind, valid] - x.reshape(1, -1)
-        weights = np.exp(-1.0 * (dx * dx * self.Sinv[None, valid]).sum(-1))
-        weights /= weights.sum()
-        return (self.y[lower_ind:upper_ind] * weights).sum(0)
+    def retrieve_batch(self, X: np.array, cutoff: Optional[float] = None) -> np.array:
+        """
+        Retrieve multiple observations using memory-efficient vectorized operations.
+        
+        Args:
+            X: A numpy array of shape (batch_size, n_features) containing observations.
+            cutoff: Optional cutoff parameter. If None, uses self.cutoff.
+            
+        Returns:
+            Array of retrieved precipitation values.
+        """
+        if cutoff is None:
+            cutoff = self.cutoff
+            
+        # For cutoff case, fall back to individual processing for now
+        if cutoff is not None:
+            return np.array([self.retrieve_single(x, cutoff=cutoff) for x in X])
+        
+        batch_size, n_features = X.shape
+        n_samples = self.X.shape[0]
+        results = np.zeros(batch_size)
+        
+        # Process using matrix multiplication instead of broadcasting
+        # This avoids creating the huge (batch_size, n_samples, n_features) array
+        
+        # Handle missing values by masking
+        X_masked = X.copy()
+        valid_mask = np.isfinite(X)
+        
+        # For each observation in the batch
+        for i in range(batch_size):
+            valid_features = valid_mask[i]
+            if not valid_features.any():
+                results[i] = np.nan
+                continue
+                
+            # Extract valid parts
+            x_valid = X[i, valid_features]
+            X_train_valid = self.X[:, valid_features]
+            Sinv_valid = self.Sinv[valid_features]
+            
+            # Vectorized distance calculation: (n_samples,)
+            diff = X_train_valid - x_valid[None, :]  # (n_samples, n_valid_features)
+            d_squared = (diff * diff * Sinv_valid[None, :]).sum(axis=1)  # (n_samples,)
+            
+            # Calculate weights
+            weights = np.exp(-0.5 * d_squared)
+            weight_sum = weights.sum()
+            
+            if weight_sum == 0.0:
+                results[i] = np.nan
+                continue
+                
+            # Weighted prediction
+            results[i] = (self.y * weights).sum() / weight_sum
+        
+        return results
 
     @classmethod
     def load(cls, path: Path) -> "BMCI":
@@ -138,6 +210,9 @@ class BMCI:
             sigma,
             cutoff=cutoff
         )
+        # Restore delta_t if saved (for backward compatibility)
+        if "delta_t" in data:
+            bmci.delta_t = float(data.delta_t.values)
         bmci.fit(
             data.X.data, data.y.data
         )
@@ -155,6 +230,9 @@ class BMCI:
         Return:
             A path object pointin to the stored file.
         """
+        if self.X is None or self.y is None:
+            raise ValueError("Model must be fitted before saving")
+            
         sigma = np.sqrt(1.0 / self.Sinv)
         model_data = xr.Dataset({
             "X": (("samples", "features"), self.X),
@@ -163,6 +241,8 @@ class BMCI:
         })
         if self.cutoff is not None:
             model_data["cutoff"] = self.cutoff
+        if hasattr(self, 'delta_t') and self.delta_t is not None:
+            model_data["delta_t"] = self.delta_t
 
         model_data["X"].encoding = {
             "dtype": "float32",
@@ -180,7 +260,39 @@ class BMCI:
         return path
 
 
-    def predict(self, X: np.array):
-        return np.array(
-            [self.retrieve_single(x, cutoff=self.cutoff) for x in X]
-        )
+    def predict(self, X: np.array, n_workers: Optional[int] = None, batch_size: int = 32):
+        """
+        Predict precipitation for multiple observations.
+        
+        Args:
+            X: Array of observations to retrieve precipitation for.
+            n_workers: Number of parallel workers. If None, uses serial processing with batching.
+            batch_size: Size of batches for vectorized processing.
+        
+        Returns:
+            Array of precipitation predictions.
+        """
+        if n_workers is None or n_workers == 1:
+            # Use vectorized batch processing instead of Python loop
+            results = []
+            for i in tqdm(range(0, len(X), batch_size), desc="Processing batches"):
+                batch = X[i:i + batch_size]
+                batch_results = self.retrieve_batch(batch, cutoff=self.cutoff)
+                results.append(batch_results)
+            return np.concatenate(results)
+
+        # Parallel processing with batches
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            batch_start = 0
+            tasks = []
+            while batch_start < X.shape[0]:
+                batch_end = batch_start + batch_size
+                tasks.append(
+                    pool.submit(self.retrieve_batch, X[batch_start:batch_end], self.cutoff)
+                )
+                batch_start += batch_size
+            results = []
+            for task in tqdm(tasks, desc="Processing parallel batches"):
+                results.append(task.result())
+
+        return np.concatenate(results)

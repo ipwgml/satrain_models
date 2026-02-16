@@ -17,9 +17,6 @@ from satrain_models.config import ComputeConfig, SatRainConfig
 from satrain_models.datamodule import SatRainDataModule
 from satrain_models.lightning import SatRainEstimationModule
 
-# Use SatRain in test mode.
-satrain.data.enable_testing()
-
 
 @pytest.fixture
 def cpu_compute_config():
@@ -51,13 +48,11 @@ def satrain_config_spatial():
 
 
 def test_lightning_module_spatial(
-    satrain_config_spatial, cpu_compute_config, monkeypatch
+    satrain_config_spatial, cpu_compute_config, satrain_test_data
 ):
     """
     Test lightning module and evaluator in spatial format using a UNet.
     """
-    monkeypatch.setattr(satrain.config, "CONFIG_DIR", Path("."))
-
     data_module = SatRainDataModule(
         satrain_config_spatial,
         batch_size=1,
