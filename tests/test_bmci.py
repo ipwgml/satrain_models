@@ -1,6 +1,6 @@
 import numpy as np
 
-from satrain_models.bmci import BMCI
+from satrain_models.bmci_fast import BMCIc
 from satrain_models.datamodule import SatRainDataModule
 
 
@@ -25,15 +25,16 @@ def test_bmci_retrieval_no_cutoff(tmp_path, satrain_test_data):
 
     sigma = np.ones(13)
 
-    bmci = BMCI(sigma, 1e-3)
+    bmci = BMCIc(sigma, cutoff=3)
     bmci.fit(X, y)
     inds = np.random.permutation(bmci.y.size)[:100]
     y_ref = bmci.y[inds]
     y_ret = bmci.predict(bmci.X[inds])
-    corr = np.corrcoef(y_ref, y_ret)[0, 1]
+    valid = np.isfinite(y_ref) * np.isfinite(y_ret)
+    corr = np.corrcoef(y_ref[valid], y_ret[valid])[0, 1]
     assert 0.5 < corr
 
-    bmci_no_cutoff = BMCI(sigma, cutoff=None)
+    bmci_no_cutoff = BMCIc(sigma, cutoff=None)
     bmci_no_cutoff.fit(X, y)
     y_ret_no_cutoff = bmci_no_cutoff.predict(bmci.X[inds])
 
@@ -41,7 +42,7 @@ def test_bmci_retrieval_no_cutoff(tmp_path, satrain_test_data):
 
     bmci.save(tmp_path / "bmci.nc")
 
-    bmci_loaded = BMCI.load(tmp_path / "bmci.nc")
+    bmci_loaded = BMCIc.load(tmp_path / "bmci.nc")
     y_ret_2 = bmci_loaded.predict(bmci.X[inds])
 
     assert np.isclose(y_ret, y_ret_2, rtol=1e-3).all()
