@@ -1,0 +1,12 @@
+numpy>=1.20.0
+torch>=1.9.0
+torchvision>=0.10.0
+matplotlib>=3.3.0
+tqdm>=4.60.0
+tomli-w>=1.0.0
+tensorboard>=2.8.0
+xarray>=0.20.0
+h5py>=3.6.0
+hdf5plugin>=4.0.0
+git+https://github.com/ipwgml/satrain
+git+https://github.com/ipwgml/satrain_models
