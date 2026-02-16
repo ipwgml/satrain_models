@@ -1,0 +1,12 @@
+# SatRain Dataset Configuration for Basic UNet CNN Model
+base_sensor = "gmi"         # 'gmi' or 'atms'
+geometry = "gridded"       # "gridded" or "on_swath"
+subset = "xl"               # "xs", "s", "m", "l", "xl"
+format = "spatial"
+
+# Retrieval input configurations (all inputs defined here are active by default)
+[[retrieval_input]]
+name = "gmi"
+include_angles = false     # Include earth incidence angles
+normalize = "minmax"       # "standardize", "minmax", or null
+nan = -1.5                 # Value to replace NaN with

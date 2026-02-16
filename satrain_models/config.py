@@ -39,6 +39,7 @@ class SatRainConfig:
     format: str = ("spatial",)
     retrieval_input: Optional[List[Union[str, Dict[str, Any]]]] = None
     target_config: Optional[Union[Dict[str, Any]]] = None
+    hidden_layer: Optional[List[int]] = None
 
     def __init__(self, **kwargs):
         """Initialize with flexible keyword arguments from TOML."""
@@ -48,6 +49,7 @@ class SatRainConfig:
         self.format = kwargs.pop("format")
         self.retrieval_input = kwargs.pop("retrieval_input")
         self.target_config = kwargs.pop("target_config", {})
+        self.hidden_layer = kwargs.pop("hidden_layer", [8, 2])
 
         if 0 < len(kwargs):
             raise ValueError(

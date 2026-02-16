@@ -12,6 +12,7 @@ from .tensorboard_to_netcdf import (
     tensorboard_to_netcdf,
 )
 from .unet import UNet, create_unet
+from .fully_connected import FullyConnectedNetwork, create_fully_connected
 from .xgboost import XGBoostRetrieval, create_xgboost
 
 __version__ = "0.1.0"
@@ -22,6 +23,8 @@ __all__ = [
     "create_unet",
     "ResNet",  # veljko
     "create_resnet",  # veljko
+    "FullyConnectedNetwork",
+    "create_fully_connected",
     "XGBoostRetrieval",
     "create_xgboost",
     "RandomForestRetrieval",
