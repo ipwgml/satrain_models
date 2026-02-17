@@ -1,0 +1,3 @@
+# EfficientNetV2 medium configuration
+model_size = "medium"
+pretrained = true

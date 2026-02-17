@@ -17,7 +17,7 @@ from satrain_models import (
     SatRainConfig,
     SatRainDataModule,
 )
-from satrain_models.bmci import BMCI
+from satrain_models.bmci_fast import BMCIc
 
 LOGGER = logging.getLogger("bmci_training")
 
@@ -45,7 +45,7 @@ class BMCITrainer:
 
         # Create and train the model
         LOGGER.info("Creating BMCI model...")
-        model = BMCI(sigma=self.sigma, cutoff=self.cutoff)
+        model = BMCIc(sigma=self.sigma, cutoff=self.cutoff)
         
         LOGGER.info("Starting BMCI training...")
         start_time = time.time()
@@ -56,14 +56,14 @@ class BMCITrainer:
         LOGGER.info(f"Training completed in {training_time:.2f} seconds")
 
         # Calculate final metrics on training data (since BMCI doesn't use validation during training)
-        train_pred = model.predict(X_train)
-        train_mse = np.mean((train_pred - y_train) ** 2)
+        X_val, y_val = self.datamodule.load_tabular_data("validation")
+        val_pred = model.predict(X_val)
+        val_mse = np.mean((val_pred - y_val) ** 2)
 
-        LOGGER.info(f"Training MSE: {train_mse:.6f}")
+        LOGGER.info(f"Validation MSE: {val_mse:.6f}")
 
         return {
-            "train_mse": float(train_mse),
-            "training_time": training_time,
+            "val_mse": float(val_mse),
             "num_samples": len(X_train),
             "num_features": X_train.shape[1],
         }, model
@@ -162,7 +162,7 @@ def main():
     # Create metrics dataset
     metrics_data = xr.Dataset(
         {
-            "train_mse": (["epoch"], [results["train_mse"]]),
+            "val_mse": (["epoch"], [results["val_mse"]]),
         },
         coords={"epoch": [0]},
     )
@@ -174,9 +174,6 @@ def main():
         "model_type": "BMCI",
         "num_samples": results["num_samples"],
         "num_features": results["num_features"],
-        "training_time": results["training_time"],
-        "sigma_mean": float(np.mean(sigma)),
-        "sigma_std": float(np.std(sigma)),
         "cutoff": cutoff,
     }
     metrics_data.attrs.update(metadata)

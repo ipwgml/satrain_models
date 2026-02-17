@@ -15,7 +15,7 @@ from satrain_models import (
     SatRainConfig,
     SatRainDataModule,
 )
-from satrain_models.bmci import BMCI
+from satrain_models.bmci_fast import BMCIc
 
 LOGGER = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def main():
         raise FileNotFoundError(f"Provided model path '{model_path}' doesn't exist.")
 
     LOGGER.info(f"Loading BMCI model from {model_path}")
-    bmci_model = BMCI.load(model_path)
+    bmci_model = BMCIc.load(model_path)
 
     # Load dataset configuration from the model directory or use default
     dataset_config_path = model_path.parent / "dataset.toml"
@@ -91,7 +91,6 @@ def main():
         evaluator.evaluate(
             create_retrieval_fn(bmci_model, satrain_config, data_module),
             input_data_format="tabular",
-            batch_size=8 * 2048,
         )
         results.append(evaluator.get_results())
 

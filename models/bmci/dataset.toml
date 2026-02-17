@@ -6,5 +6,3 @@ format = "tabular"
 [[retrieval_input]]
 name = "gmi"
 include_angles = false
-normalize = "minmax"
-nan = -1.5

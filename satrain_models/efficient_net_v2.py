@@ -2,13 +2,71 @@
 EfficientNetV2 model implementation for SatRain dataset.
 Modified for regression with spatial output and UNet-style decoder.
 """
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import efficientnet_v2_s, efficientnet_v2_m, efficientnet_v2_l
 import logging
 
+# Try to import TOML library (tomllib in Python 3.11+, tomli for older versions)
+try:
+    import tomllib
+    TOML_AVAILABLE = True
+except ImportError:
+    try:
+        import tomli as tomllib
+        TOML_AVAILABLE = True
+    except ImportError:
+        TOML_AVAILABLE = False
+        tomllib = None
+
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EfficientNetV2Config:
+    """Configuration for EfficientNetV2 model."""
+    model_size: str = "small"
+    pretrained: bool = False
+
+    def __str__(self) -> str:
+        """Generate a meaningful string representation for model naming."""
+        pretrained_str = "pretrained" if self.pretrained else "scratch"
+        return f"{self.model_size}_{pretrained_str}"
+
+    @property
+    def model_name(self) -> str:
+        """Alias for string representation - used for model naming."""
+        return str(self)
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "EfficientNetV2Config":
+        """Create EfficientNetV2Config from dictionary."""
+        return cls(**config_dict)
+
+    @classmethod
+    def from_toml_file(cls, toml_path: Union[str, Path]) -> "EfficientNetV2Config":
+        """Create EfficientNetV2Config from TOML file."""
+        if not TOML_AVAILABLE:
+            raise ImportError(
+                "TOML library not available. Install with: pip install tomli"
+            )
+
+        toml_path = Path(toml_path)
+        if not toml_path.exists():
+            raise FileNotFoundError(f"TOML file not found: {toml_path}")
+
+        with open(toml_path, "rb") as f:
+            config_dict = tomllib.load(f)
+
+        return cls.from_dict(config_dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert EfficientNetV2Config to dictionary representation."""
+        return asdict(self)
 
 
 class UNetDecoder(nn.Module):

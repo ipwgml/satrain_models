@@ -7,6 +7,7 @@ different convolution blocks.
 """
 
 from dataclasses import asdict, dataclass
+from math import sqrt
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
 
@@ -132,8 +133,6 @@ class ResNeXtBlock(nn.Module):
 
         # Calculate bottleneck channels
         width = int(out_channels * (bottleneck_width / 64.0)) * cardinality
-
-        print(in_channels, width, out_channels)
 
         # Determine stride for downsampling
         stride = downsample if downsample is not None else (1, 1)
@@ -605,6 +604,290 @@ class InvertedBottleneck(nn.Module):
         return shortcut + self.body(x)
 
 
+class WindowAttention(nn.Module):
+    """
+    Window based multi-head self attention with relative position biases.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        window_size: int,
+        num_heads: int,
+        qkv_bias: bool = True,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
+    ):
+        """
+        Args:
+            in_channels: The number of input channels.
+            out_channels: The number of input channels.
+            window_size: The size of the attention windows.
+            num_heads: The number of attention heads.
+            qkv_bias: Whether to include biases for the QKV mapping.
+            attn_drop: Dropout fraction to apply to the attention.
+            proj_drop: Dropout to apply to the projection.
+
+        """
+        super().__init__()
+        self.window_size = window_size
+        self.num_heads = num_heads
+        n_pos = (2 * window_size[0] - 1) * (2 * window_size[1] - 1)
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros(num_heads, n_pos)
+        )
+
+        coords_h = torch.arange(self.window_size[0])
+        coords_w = torch.arange(self.window_size[1])
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))
+        coords_flatten = torch.flatten(coords, 1)
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()
+        relative_coords[:, :, 0] += self.window_size[0] - 1
+        relative_coords[:, :, 1] += self.window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
+        relative_position_index = relative_coords.sum(-1)
+        self.register_buffer("relative_position_index", relative_position_index)
+
+        self.qkv = nn.Linear(in_channels, out_channels * 3, bias=qkv_bias)
+        self.attn_drop = attn_drop
+        self.proj = nn.Linear(out_channels, out_channels)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        nn.init.trunc_normal_(self.relative_position_bias_table, std=0.02)
+
+    def forward(self, x, mask=None):
+        B, N, L, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, L, 3, self.num_heads, -1).permute(0, 1, 4, 2, 3, 5)
+        C = qkv.shape[-1]
+        q, k, v = torch.unbind(qkv, dim=-2)
+
+        relative_position_bias = self.relative_position_bias_table[
+            ..., self.relative_position_index.view(-1)
+        ].view(1, self.num_heads, L, L)
+        if mask is not None:
+            relative_position_bias = relative_position_bias[None].repeat_interleave(B, 0).repeat_interleave(N, 1)
+            mask = mask[:, :, None].repeat_interleave(self.num_heads, 2)
+            relative_position_bias[mask] = -100.0
+
+        x = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=relative_position_bias, dropout_p=self.attn_drop
+        )
+
+        x = self.proj(x.permute(0, 1, 3, 2, 4).reshape(B, N, L, -1))
+        x = self.proj_drop(x)
+        return x
+
+
+def window_partition(x, window_size):
+    """
+    Partition into non-overlapping windows.
+    """
+    B, C, H, W = x.shape
+    x = x.view(B, C, H // window_size, window_size, W // window_size, window_size)
+    windows = (
+        x.permute(0, 2, 4, 3, 5, 1).contiguous().view(B, H * W // window_size // window_size, window_size * window_size, C)
+    )
+    return windows
+
+
+def window_reverse(windows, window_size, H, W):
+    """
+    Reverse window partition.
+    """
+    B, N, L, C = windows.shape
+    x = windows.view(
+        B, H // window_size, W // window_size, window_size, window_size, -1
+    )
+    x = x.permute(0, 5, 1, 3, 2, 4).contiguous().view(B, -1, H, W)
+    return x
+
+
+class PatchMerging(nn.Module):
+    """
+    Downsamples a sequence of tokens representing a QUADRATIC input image by a factor of two by merging
+    2 x 2 neighborhoods of patches.
+    """
+
+    def __init__(self, chans_in: int, chans_out: Optional[int] = None):
+        """
+        Args:
+            chans_in: The number of features in the input tokens.
+            chans_out: The number of features in the output tokens.
+        """
+        super().__init__()
+        if chans_out is None:
+            chans_out = 2 * chans_in
+        self.chans_in = chans_in
+        self.chans_out = chans_out
+        self.proj = nn.Linear(4 * chans_in, chans_out, bias=False)
+        self.norm = nn.LayerNorm(4 * chans_in)
+
+    def forward(self, x):
+
+        x0 = x[:, :, 0::2, 0::2]
+        x1 = x[:, :, 1::2, 0::2]
+        x2 = x[:, :, 0::2, 1::2]
+        x3 = x[:, :, 1::2, 1::2]
+        x = torch.cat([x0, x1, x2, x3], 1)
+
+        x = x.permute((0, 2, 3, 1))
+        x = self.norm(x)
+        x = self.proj(x)
+        x = x.permute((0, 3, 1, 2))
+
+        return x
+
+
+class SwinAttention(nn.Module):
+    """
+    Swin Transformer Block applying window attention and shift.
+    """
+    num_heads = (4, 4, 8, 16, 24, 24)
+
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        stage_ind: int,
+        block_ind: int,
+        downsample: Optional[Tuple[int, int]] = None,
+        window_size: int = 8,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        mlp_drop: float = 0.0,
+        attn_drop: float = 0.0,
+        drop_path: float = 0.0,
+    ):
+        """
+        Args:
+            in_channels: The number of channels in the input.
+            out_channels: The number of channels in the input.
+            stage_ind: The index defining the in which stage of the encoder this block is added.
+            blocks_ind: The index defining the running number of blocks in this stage.
+            window_size: The size of the attention window.
+            shift_size: The shift to apply in the block.
+            mlp_ratio: Factor by which to increase the channels to use for the MLP.
+            qkv_bias: Whether or not to include a bias in the qkv projection.
+            drop: Dropout applied in the MLP block..
+
+        """
+        super().__init__()
+        num_heads = self.num_heads[stage_ind]
+        image_size = 256 // 2 ** stage_ind
+        image_size = (image_size,) * 2
+        shift_size = 0 if block_ind % 2 == 0 else window_size // 2
+
+        if downsample is not None:
+            self.downsample = PatchMerging(in_channels, out_channels)
+            in_channels = out_channels
+        else:
+            self.downsample = None
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.image_size = image_size
+        self.num_heads = num_heads
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.mlp_ratio = mlp_ratio
+        if min(self.image_size) <= self.window_size:
+            self.shift_size = 0
+            self.window_size = min(self.image_size)
+
+        self.norm1 = nn.LayerNorm(self.in_channels)
+        self.attn = WindowAttention(
+            self.in_channels,
+            self.out_channels,
+            window_size=[self.window_size, self.window_size],
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            attn_drop=attn_drop,
+            proj_drop=mlp_drop,
+        )
+
+        if in_channels == out_channels:
+            self.projection = nn.Identity()
+        else:
+            self.projection = nn.Linear(in_channels, out_channels)
+
+        self.drop_path = nn.Identity() if drop_path <= 0.0 else nn.Dropout(drop_path)
+        self.norm2 = nn.LayerNorm(self.out_channels)
+        mlp_hidden_dim = int(self.out_channels * mlp_ratio)
+        self.mlp = nn.Sequential(
+            nn.Linear(self.out_channels, mlp_hidden_dim),
+            nn.GELU(),
+            nn.Dropout(mlp_drop),
+            nn.Linear(mlp_hidden_dim, self.out_channels),
+            nn.Dropout(mlp_drop),
+        )
+
+        if self.shift_size > 0:
+            H, W = self.image_size
+            img_mask = torch.zeros((H, W))
+            h_slices = (
+                slice(0, -self.window_size),
+                slice(-self.window_size, -self.shift_size),
+                slice(-self.shift_size, None),
+            )
+            w_slices = (
+                slice(0, -self.window_size),
+                slice(-self.window_size, -self.shift_size),
+                slice(-self.shift_size, None),
+            )
+            cnt = 0
+            for h in h_slices:
+                for w in w_slices:
+                    img_mask[h, w] = cnt
+                    cnt += 1
+            mask_windows = window_partition(img_mask[None, None], self.window_size)
+            mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+            attn_mask = mask_windows.unsqueeze(1) != mask_windows.unsqueeze(2)
+        else:
+            attn_mask = None
+
+        self.register_buffer("attn_mask", attn_mask)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        if self.downsample:
+            x = self.downsample(x)
+
+        if self.shift_size > 0:
+            shifted_x = torch.roll(
+                x, shifts=(-self.shift_size, -self.shift_size), dims=(-2, -1)
+            )
+        else:
+            shifted_x = x
+        B, C = x.shape[:2]
+        x = window_partition(shifted_x, self.window_size)
+
+        H, W = self.image_size
+
+        shortcut = self.projection(x)
+        x = self.norm1(x)
+
+        mask = self.attn_mask
+        if mask is not None:
+            mask = mask[None].repeat_interleave(B, dim=0)
+        attn_windows = self.attn(x, mask=mask)
+
+        attn_windows = attn_windows
+        x = shortcut + self.drop_path(attn_windows)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+
+        x = window_reverse(x, self.window_size, H, W)
+        if self.shift_size > 0:
+            x = torch.roll(
+                x,
+                shifts=(self.shift_size, self.shift_size),
+                dims=(-2, -1),
+            )
+        return x
+
+
 class EncoderStage(nn.Module):
     """
     An encoder stage containing multiple convolution blocks.
@@ -783,7 +1066,7 @@ class EncoderDecoder(nn.Module):
                 block_factory=block_factory,
                 depth=stage_depth,
                 upsample=(2, 2),
-                stage_ind=len(channels) - 1 - stage_idx,
+                stage_ind=len(channels) - 2 - stage_idx,
             )
             self.decoder_stages.append(stage)
             current_channels = stage_channels

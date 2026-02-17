@@ -23,4 +23,4 @@ sigma = [
 # Optional cutoff value for speeding up retrieval
 # If specified, samples with weights lower than this threshold will be discarded
 # Set to null to disable cutoff (use all samples)
-cutoff = 0.001
+cutoff = 3
