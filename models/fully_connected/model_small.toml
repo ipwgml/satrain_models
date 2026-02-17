@@ -1,0 +1,3 @@
+# FullyConnected small configuration
+hidden_dims = [64, 64]
+dropout = 0.0
