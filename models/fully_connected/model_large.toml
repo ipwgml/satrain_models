@@ -1,0 +1,3 @@
+# FullyConnected large configuration
+hidden_dims = [256, 256, 256, 256]
+dropout = 0.0
