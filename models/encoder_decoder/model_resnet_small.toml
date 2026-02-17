@@ -1,0 +1,6 @@
+block_factory = "ResidualBlock"
+channels = [64, 128, 256, 512]
+depths = [2, 2, 2, 2]
+in_channels = 3 # Overwritten
+out_channels = 1
+bilinear = true

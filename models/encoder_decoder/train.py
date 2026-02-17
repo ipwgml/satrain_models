@@ -25,6 +25,7 @@ from satrain_models.encoder_decoder import (
     Conv2dBnReLU,
     Conv2dLnGELU,
     Conv2dLnReLU,
+    ResidualBlock,
     ResNeXtBlock,
     InvertedBottleneck
 )
@@ -36,6 +37,7 @@ BLOCK_FACTORIES = {
     "Conv2dBnReLU": Conv2dBnReLU,
     "Conv2dLnGELU": Conv2dLnGELU,
     "Conv2dLnReLU": Conv2dLnReLU,
+    "ResidualBlock": ResidualBlock,
     "ResNeXtBlock": ResNeXtBlock,
     "InvertedBottleneck": InvertedBottleneck,
 }

@@ -110,6 +110,70 @@ class Conv2dBnReLU(nn.Module):
         return x
 
 
+class ResidualBlock(nn.Module):
+    """Basic residual block with skip connection.
+
+    A residual block consists of two convolutions with batch normalization
+    and a skip connection that allows the gradient to flow directly through.
+
+    Args:
+        in_channels (int): Number of input channels
+        out_channels (int): Number of output channels
+        stride (int): Stride for the first convolution (default: 1)
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        downsample: Optional[Tuple[int, int]] = None,
+        stage_ind: int = 0,
+        block_ind: int = 0,
+    ):
+        super().__init__()
+        stride = 1 if downsample is None else downsample
+        # Use reflection padding instead of zero padding to reduce edge artifacts
+        self.pad1 = nn.ReflectionPad2d(1)
+        self.conv1 = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3,
+            stride=stride, padding=0, bias=False
+        )
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.pad2 = nn.ReflectionPad2d(1)
+        self.conv2 = nn.Conv2d(
+            out_channels, out_channels, kernel_size=3,
+            padding=0, bias=False
+        )
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+        # Skip connection: identity if dimensions match, else adapt via 1x1 conv
+        self.skip = nn.Identity()
+        if stride != 1 or in_channels != out_channels:
+            self.skip = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(out_channels)
+            )
+
+    def forward(self, x):
+        """Forward pass with residual connection.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, in_channels, H, W)
+
+        Returns:
+            torch.Tensor: Output tensor of shape (B, out_channels, H, W)
+        """
+        identity = self.skip(x)
+        out = self.pad1(x)
+        out = self.relu(self.bn1(self.conv1(out)))
+        out = self.pad2(out)
+        out = self.bn2(self.conv2(out))
+        out += identity
+        out = self.relu(out)
+        return out
+
+
 class ResNeXtBlock(nn.Module):
     """
     ResNeXt block with grouped convolutions and residual connection.
