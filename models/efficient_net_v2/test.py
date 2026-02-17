@@ -126,14 +126,14 @@ def main():
     experiment_name = lightning_module.experiment_name
 
     results = []
-    domains = ["austria"]  # , "conus", "korea"]
+    domains = ["austria", "conus", "korea"]
     for domain in domains:
         LOGGER.info("Running evaluation for domain '%s'.", domain)
         evaluator = data_module.get_evaluator(domain)
         evaluator.evaluate(
             lightning_module.get_retrieval_fn(satrain_config, compute_config),
             batch_size=compute_config.batch_size,
-            tile_size=(64, 64)
+            tile_size=satrain_config.tile_size,
         )
         results.append(evaluator.get_results())
 
