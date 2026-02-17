@@ -27,7 +27,7 @@ def test_bmci_retrieval_no_cutoff(tmp_path, satrain_test_data):
 
     bmci = BMCIc(sigma, cutoff=3)
     bmci.fit(X, y)
-    inds = np.random.permutation(bmci.y.size)[:100]
+    inds = np.random.permutation(bmci.y.size)[:1_000]
     y_ref = bmci.y[inds]
     y_ret = bmci.predict(bmci.X[inds])
     valid = np.isfinite(y_ref) * np.isfinite(y_ret)
