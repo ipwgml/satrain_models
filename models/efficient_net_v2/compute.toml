@@ -1,10 +1,10 @@
 # === Hardware Configuration ===
-accelerator = "cpu"#cuda          # "cpu", "gpu", "mps", "auto"
-devices = 1#[0]                  # Number of devices to use (1 for single GPU)]
-precision = "32"             # "16", "bf16", "32", "16-mixed"
+accelerator = "cuda"          # "cpu", "gpu", "mps", "auto"
+devices = [1]                  # Number of devices to use (1 for single GPU)]
+precision = "bf16-mixed"             # "16", "bf16", "32", "16-mixed"
 
 # === Training Configuration ===
-max_epochs = 100               # Maximum training epochs
+max_epochs = 1               # Maximum training epochs
 batch_size = 32               # Training batch size
 approach = "adamw_warmup_cosine_annealing_restarts"    # "sgd_simple", "adamw_simple", "adamw_cosine"
 

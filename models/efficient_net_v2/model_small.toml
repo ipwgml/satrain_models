@@ -1,0 +1,3 @@
+# EfficientNetV2 small configuration
+model_size = "small"
+pretrained = true

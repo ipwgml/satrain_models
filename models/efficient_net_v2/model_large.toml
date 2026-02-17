@@ -1,0 +1,3 @@
+# EfficientNetV2 large configuration
+model_size = "large"
+pretrained = true

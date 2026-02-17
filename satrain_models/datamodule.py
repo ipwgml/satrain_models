@@ -209,8 +209,8 @@ class SatRainDataModule(L.LightningDataModule):
         input_arrays = []
         for inpt in retrieval_input:
             dataset = input_data[inpt.name].transpose("samples", ...)
-            input_data = inpt.load_data(dataset, target_time=target_time)
-            for array in input_data.values():
+            inputs = inpt.load_data(dataset, target_time=target_time)
+            for array in inputs.values():
                 input_arrays.append(array.T)
 
         X = np.concatenate(input_arrays, axis=1)

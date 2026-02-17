@@ -39,7 +39,7 @@ class FullyConnectedConfig:
         """Generate a meaningful string representation for model naming."""
         dims_str = "x".join(map(str, self.hidden_dims))
         dropout_str = f"drop{self.dropout}" if self.dropout > 0 else "nodrop"
-        return f"fc_{dims_str}_{dropout_str}"
+        return f"{dims_str}_{dropout_str}"
 
     @property
     def model_name(self) -> str:
