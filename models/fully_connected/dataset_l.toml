@@ -1,7 +1,7 @@
 # SatRain Dataset Configuration for Fully Connected Model
 base_sensor = "gmi"         # 'gmi' or 'atms'
 geometry = "on_swath"       # "gridded" or "on_swath"
-subset = "xs"               # "xs", "s", "m", "l", "xl"
+subset = "l"               # "xs", "s", "m", "l", "xl"
 format = "tabular"
 
 # Retrieval input configurations (all inputs defined here are active by default)
