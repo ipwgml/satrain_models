@@ -3,7 +3,6 @@ base_sensor = "gmi"         # 'gmi' or 'atms'
 geometry = "gridded"       # "gridded" or "on_swath"
 subset = "xs"               # "xs", "s", "m", "l", "xl"
 format = "tabular"
-hidden_layer = [12, 8, 4, 2]
 
 # Retrieval input configurations (all inputs defined here are active by default)
 [[retrieval_input]]

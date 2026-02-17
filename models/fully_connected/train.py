@@ -7,13 +7,11 @@ import argparse
 import logging
 from pathlib import Path
 
+import torch
 import lightning as L
 import torch.nn as nn
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
-
-import satrain_models
-print(satrain_models, getattr(satrain_models, "__file__", None))
 
 from satrain_models import (
     ComputeConfig,
@@ -22,6 +20,7 @@ from satrain_models import (
     SatRainEstimationModule,
     create_fully_connected,
     tensorboard_to_netcdf,
+    FullyConnectedConfig,
 )
 
 LOGGER = logging.getLogger("basic_fully_connected_training")
@@ -29,15 +28,19 @@ LOGGER = logging.getLogger("basic_fully_connected_training")
 
 def main():
     """Training function"""
-     
-    parser = argparse.ArgumentParser(description="Train basic Fully Connected model")
-    parser.add_argument(
-        "compute_config", help="Path to compute config file.", default="compute.toml"
-    )
+    parser = argparse.ArgumentParser(description="Train FullyConnected model")
+    parser.add_argument("model_config", help="Path to model configuration TOML file")
     parser.add_argument(
         "--dataset-config", help="Path to dataset config file.", default="dataset.toml"
     )
     args = parser.parse_args()
+
+    # Load model configuration
+    model_config_path = Path(args.model_config)
+    if not model_config_path.exists():
+        raise FileNotFoundError(f"Model config not found: {model_config_path}")
+    model_config = FullyConnectedConfig.from_toml_file(model_config_path)
+    LOGGER.info(f"Loaded model config from: {model_config_path}")
 
     # Load dataset configuration
     dataset_config_path = Path(args.dataset_config)
@@ -47,18 +50,11 @@ def main():
     LOGGER.info(f"Loaded SatRain config from: {dataset_config_path}")
 
     # Load compute configuration
-    compute_config_path = Path(args.compute_config)
+    compute_config_path = Path("compute.toml")
     if not compute_config_path.exists():
         raise FileNotFoundError(f"Compute config not found: {compute_config_path}")
     compute_config = ComputeConfig.from_toml_file(compute_config_path)
     LOGGER.info(f"Loaded compute config from: {compute_config_path}")
-
-    # if 'fully_connected' not in compute_config.model_config:
-    #     compute_config.model_config['fully_connected'] = {'hidden_layer': [8,2]}
-
-    # for cfg in compute_config.model_config['fully_connected']:
-    #     if 'hidden_layer' in cfg:
-    #         hidden_layer = compute_config.model_config['fully_connected']['hidden_layer']
 
     # Create data module
     datamodule = SatRainDataModule(
@@ -69,17 +65,23 @@ def main():
         persistent_workers=compute_config.persistent_workers,
     )
     
-    # Create model
+    # Create model using model config
     fully_connected_model = create_fully_connected(
-        input_dim=datamodule.num_features, hidden_dims=config.hidden_layer)
+        input_dim=datamodule.num_features, 
+        hidden_dims=model_config.hidden_dims,
+        dropout=model_config.dropout
+    )
     
-    # Create Lightning module with dataset-aware naming
-    experiment_prefix = config.get_experiment_name_prefix("fully_connected")
+    # Create experiment name that includes dataset configuration
+    dataset_prefix = config.get_experiment_name_prefix("fully_connected")
+    full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
+    
+    # Create Lightning module with custom name
     lightning_module = SatRainEstimationModule(
         model=fully_connected_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
-        name=experiment_prefix,
+        name=full_experiment_name,
     )
     experiment_name = lightning_module.experiment_name
 
@@ -100,7 +102,7 @@ def main():
     )
 
     # Train the model
-    LOGGER.info(f"Starting the training: {compute_config_path}")
+    LOGGER.info(f"Starting training: {model_config.model_name}")
     trainer.fit(lightning_module, datamodule)
 
     # Extract and save training metrics
@@ -111,19 +113,32 @@ def main():
     log_path = Path(current_log_dir)
     version_name = log_path.name
     metadata = {
-        "experiment": experiment_prefix,
+        "experiment": "fully_connected",
+        "model_name": model_config.model_name,
         "version": version_name,
         "approach": compute_config.approach,
+        "hidden_dims": model_config.hidden_dims,
+        "dropout": model_config.dropout,
     }
     output_path = netcdf_dir / (experiment_name + ".nc")
     tensorboard_to_netcdf(
         log_dir=current_log_dir, output_path=output_path, metadata=metadata
     )
 
-    # Save model with dataset config
+    # Save model with dataset and model config
     output_path = Path("models")
     output_path.mkdir(exist_ok=True)
-    lightning_module.save(config, output_path)
+    
+    # Save model manually to include both configs
+    model_path = output_path / f"{experiment_name}.pt"
+    state = lightning_module.model.state_dict()
+    torch.save({
+        "state_dict": state,
+        "satrain_config": config.to_dict(),
+        "model_config": model_config.to_dict(),
+    }, model_path)
+    
+    LOGGER.info(f"Model saved to: {model_path}")
 
 
 if __name__ == "__main__":
