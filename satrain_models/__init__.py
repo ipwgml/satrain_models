@@ -12,10 +12,10 @@ from .tensorboard_to_netcdf import (
     tensorboard_to_netcdf,
 )
 from .unet import UNet, create_unet
-from .fully_connected import FullyConnectedNetwork, create_fully_connected
+from .fully_connected import FullyConnectedNetwork, create_fully_connected, FullyConnectedConfig
 from .xgboost import XGBoostRetrieval, create_xgboost
-from .efficient_net_v2 import create_efficient_net_v2 
-from .convnext import create_convnext
+from .efficient_net_v2 import create_efficient_net_v2, EfficientNetV2Config 
+from .convnext import create_convnext, ConvNeXtConfig
 
 __version__ = "0.1.0"
 __author__ = "SatRain Contributors"
@@ -27,6 +27,7 @@ __all__ = [
     "create_resnet",  # veljko
     "FullyConnectedNetwork",
     "create_fully_connected",
+    "FullyConnectedConfig",
     "XGBoostRetrieval",
     "create_xgboost",
     "RandomForestRetrieval",
@@ -41,5 +42,7 @@ __all__ = [
     "tensorboard_to_netcdf",
     "extract_all_training_runs",
     "create_efficient_net_v2",
-    "create_convnext" 
+    "EfficientNetV2Config",
+    "create_convnext",
+    "ConvNeXtConfig"
 ]
