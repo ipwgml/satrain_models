@@ -5,9 +5,72 @@ satrain_models.fully_connected
 Provides an implementation of a basic PyTorch Fully Connected Network.
 """
 
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Try to import TOML library (tomllib in Python 3.11+, tomli for older versions)
+try:
+    import tomllib
+    TOML_AVAILABLE = True
+except ImportError:
+    try:
+        import tomli as tomllib
+        TOML_AVAILABLE = True
+    except ImportError:
+        TOML_AVAILABLE = False
+        tomllib = None
+
+
+@dataclass
+class FullyConnectedConfig:
+    """Configuration for FullyConnected model."""
+    hidden_dims: List[int] = None
+    dropout: float = 0.0
+
+    def __post_init__(self):
+        if self.hidden_dims is None:
+            self.hidden_dims = [16, 8, 4]
+
+    def __str__(self) -> str:
+        """Generate a meaningful string representation for model naming."""
+        dims_str = "x".join(map(str, self.hidden_dims))
+        dropout_str = f"drop{self.dropout}" if self.dropout > 0 else "nodrop"
+        return f"fc_{dims_str}_{dropout_str}"
+
+    @property
+    def model_name(self) -> str:
+        """Alias for string representation - used for model naming."""
+        return str(self)
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "FullyConnectedConfig":
+        """Create FullyConnectedConfig from dictionary."""
+        return cls(**config_dict)
+
+    @classmethod
+    def from_toml_file(cls, toml_path: Union[str, Path]) -> "FullyConnectedConfig":
+        """Create FullyConnectedConfig from TOML file."""
+        if not TOML_AVAILABLE:
+            raise ImportError(
+                "TOML library not available. Install with: pip install tomli"
+            )
+
+        toml_path = Path(toml_path)
+        if not toml_path.exists():
+            raise FileNotFoundError(f"TOML file not found: {toml_path}")
+
+        with open(toml_path, "rb") as f:
+            config_dict = tomllib.load(f)
+
+        return cls.from_dict(config_dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert FullyConnectedConfig to dictionary representation."""
+        return asdict(self)
 
 
 class FullyConnectedBlock(nn.Module):

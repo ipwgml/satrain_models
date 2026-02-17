@@ -16,7 +16,7 @@ import xarray as xr
 
 from satrain_models import (
     SatRainEstimationModule, ComputeConfig, create_fully_connected, SatRainConfig, SatRainDataModule,
-    tensorboard_to_netcdf
+    tensorboard_to_netcdf, FullyConnectedConfig
 )
 
 
@@ -40,20 +40,46 @@ def main():
         return 1
 
 
-    loaded = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
-    state = loaded["state_dict"]
+    # Load checkpoint/state_dict (accept multiple formats)
+    loaded = torch.load(model_path, map_location=torch.device("cpu"), weights_only=False)
 
-    # Remove model prefix for checkpoint files.
-    if model_path.suffix == ".ckpt":
-        state = {key[6:]: val for key, val in state.items()}
+    # If checkpoint is a dict containing 'state_dict' (Lightning style), use it.
+    if isinstance(loaded, dict) and "state_dict" in loaded:
+        state = loaded["state_dict"]
+        satrain_cfg = loaded.get("satrain_config", None)
+        model_cfg = loaded.get("model_config", None)
+    else:
+        # Assume loaded is a bare state_dict
+        state = loaded
+        satrain_cfg = None
+        model_cfg = None
 
-    # satrain_config = SatRainConfig(**loaded["satrain_config"])
-    # LOGGER.info(f"Loaded SatRain config from model file %s", model_path)
+    # Remove common 'model.' or 'model_' prefixes from Lightning checkpoints
+    if isinstance(state, dict) and any(k.startswith("model.") or k.startswith("model_") for k in state.keys()):
+        state = {
+            (k.split(".", 1)[1] if k.startswith("model.") else (k.split("_", 1)[1] if k.startswith("model_") else k)): v
+            for k, v in state.items()
+        }
 
-    satrain_config = SatRainConfig(**loaded["satrain_config"])
-    #satrain_config.retrieval_input[0].include_angles = False
-    print(satrain_config)
-    LOGGER.info(f"Loaded SatRain config from model file %s", model_path)
+    # Build SatRainConfig: prefer checkpoint's config, otherwise fallback to local dataset.toml
+    if satrain_cfg is not None:
+        satrain_config = SatRainConfig(**satrain_cfg)
+    else:
+        dataset_config_path = Path("dataset.toml")
+        if not dataset_config_path.exists():
+            raise FileNotFoundError(
+                "Checkpoint has no 'satrain_config' and dataset.toml not found in working directory."
+            )
+        satrain_config = SatRainConfig.from_toml_file(dataset_config_path)
+        LOGGER.info("Loaded SatRain config from dataset.toml (fallback)")
+
+    # Build FullyConnectedConfig: prefer checkpoint's config, otherwise use default
+    if model_cfg is not None:
+        model_config = FullyConnectedConfig(**model_cfg)
+    else:
+        # Use default config if not found in checkpoint
+        model_config = FullyConnectedConfig()
+        LOGGER.info("Using default FullyConnected config (checkpoint has no 'model_config')")
 
     # Load compute configuration
     compute_config_path = Path("compute.toml")
@@ -74,16 +100,21 @@ def main():
     # Create model
     fully_connected_model = create_fully_connected(
         input_dim=satrain_config.num_features,
-        hidden_dims=satrain_config.hidden_layer)
+        hidden_dims=model_config.hidden_dims,
+        dropout=model_config.dropout
+    )
     fully_connected_model.load_state_dict(state)
 
+    # Create experiment name that includes dataset and model configuration
+    dataset_prefix = satrain_config.get_experiment_name_prefix("fully_connected")
+    full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
+    
     # Create Lightning module
-    experiment_prefix = satrain_config.get_experiment_name_prefix("fully_connected")
     lightning_module = SatRainEstimationModule(
         model=fully_connected_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
-        name=experiment_prefix,
+        name=full_experiment_name,
     )
     experiment_name = lightning_module.experiment_name
 
