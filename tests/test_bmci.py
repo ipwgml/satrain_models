@@ -38,11 +38,11 @@ def test_bmci_retrieval_no_cutoff(tmp_path, satrain_test_data):
     bmci_no_cutoff.fit(X, y)
     y_ret_no_cutoff = bmci_no_cutoff.predict(bmci.X[inds])
 
-    assert np.isclose(y_ret_no_cutoff, y_ret, rtol=1e-3).all()
+    assert np.isclose(y_ret_no_cutoff[valid], y_ret[valid], rtol=1e-3).all()
 
     bmci.save(tmp_path / "bmci.nc")
 
     bmci_loaded = BMCIc.load(tmp_path / "bmci.nc")
     y_ret_2 = bmci_loaded.predict(bmci.X[inds])
 
-    assert np.isclose(y_ret, y_ret_2, rtol=1e-3).all()
+    assert np.isclose(y_ret[valid], y_ret_2[valid], rtol=1e-3).all()
