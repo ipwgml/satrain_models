@@ -9,9 +9,90 @@ Created: January 2026
 questions: veljko.petkovic@umd.edu
 """
 
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Union
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+@dataclass
+class ResNetConfig:
+    """Configuration for ResNet model."""
+    
+    n_channels: int
+    n_outputs: int = 1
+    blocks_per_layer: int = 3
+    n_layers: int = 4
+    base_channels: int = 64
+
+    def __str__(self) -> str:
+        """Generate a meaningful string representation for model naming."""
+        return f"resnet_{self.n_layers}layer_{self.blocks_per_layer}blocks_ch{self.base_channels}_in{self.n_channels}_out{self.n_outputs}"
+
+    @property
+    def model_name(self) -> str:
+        """Alias for string representation - used for model naming."""
+        return str(self)
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "ResNetConfig":
+        """Create ResNetConfig from dictionary.
+        
+        Args:
+            config_dict: Dictionary containing configuration parameters
+            
+        Returns:
+            ResNetConfig instance
+        """
+        return cls(**config_dict)
+
+    @classmethod
+    def from_toml_file(cls, toml_path: Union[str, Path]) -> "ResNetConfig":
+        """Create ResNetConfig from TOML file.
+        
+        Args:
+            toml_path: Path to the TOML configuration file
+            
+        Returns:
+            ResNetConfig instance
+            
+        Raises:
+            ImportError: If TOML library is not available
+            FileNotFoundError: If the TOML file doesn't exist
+        """
+        try:
+            import tomllib
+        except ImportError:
+            try:
+                import tomli as tomllib
+            except ImportError:
+                raise ImportError("No TOML library available. Please install tomli.")
+
+        toml_path = Path(toml_path)
+        if not toml_path.exists():
+            raise FileNotFoundError(f"Config file not found: {toml_path}")
+
+        with open(toml_path, "rb") as f:
+            config_dict = tomllib.load(f)
+
+        return cls.from_dict(config_dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert ResNetConfig to dictionary.
+        
+        Returns:
+            Dictionary containing configuration parameters
+        """
+        return {
+            "n_channels": self.n_channels,
+            "n_outputs": self.n_outputs,
+            "blocks_per_layer": self.blocks_per_layer,
+            "n_layers": self.n_layers,
+            "base_channels": self.base_channels,
+        }
 
 
 class ResidualBlock(nn.Module):
@@ -189,4 +270,23 @@ def create_resnet(n_channels=3, n_outputs=1, blocks_per_layer=3, n_layers=4, bas
         blocks_per_layer=blocks_per_layer,
         n_layers=n_layers,
         base_channels=base_channels,
+    )
+
+
+def create_resnet_from_config(model_config: ResNetConfig, num_features: int) -> ResNet:
+    """Create ResNet model from configuration.
+    
+    Args:
+        model_config: ResNet configuration object
+        num_features: Number of input features (overrides config n_channels)
+        
+    Returns:
+        ResNet: Configured ResNet model
+    """
+    return ResNet(
+        n_channels=num_features,
+        n_outputs=model_config.n_outputs,
+        blocks_per_layer=model_config.blocks_per_layer,
+        n_layers=model_config.n_layers,
+        base_channels=model_config.base_channels,
     )

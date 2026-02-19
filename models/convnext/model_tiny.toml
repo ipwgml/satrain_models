@@ -1,0 +1,3 @@
+# ConvNeXt tiny configuration
+model_size = "tiny"
+pretrained = true

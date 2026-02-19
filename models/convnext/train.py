@@ -3,9 +3,11 @@
 Training script for ConvNeXt model on SatRain dataset.
 All configuration is read from TOML files.
 """
+import argparse
 import logging
 from pathlib import Path
 
+import torch
 import torch.nn as nn
 import lightning as L
 from lightning.pytorch.loggers import TensorBoardLogger
@@ -13,17 +15,29 @@ from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 
 from satrain_models import (
     SatRainEstimationModule, SatRainConfig, create_convnext,
-    SatRainDataModule, tensorboard_to_netcdf, ComputeConfig
+    SatRainDataModule, tensorboard_to_netcdf, ComputeConfig, ConvNeXtConfig
 )
-# from convnext import create_convnext  # Import from the file above
 
 LOGGER = logging.getLogger("convnext_training")
 
 def main():
     """Main training function - all configuration from TOML files."""
+    parser = argparse.ArgumentParser(description="Train ConvNeXt model")
+    parser.add_argument("model_config", help="Path to model configuration TOML file")
+    parser.add_argument(
+        "--dataset-config", help="Path to dataset config file.", default="dataset.toml"
+    )
+    args = parser.parse_args()
+
+    # Load model configuration
+    model_config_path = Path(args.model_config)
+    if not model_config_path.exists():
+        raise FileNotFoundError(f"Model config not found: {model_config_path}")
+    model_config = ConvNeXtConfig.from_toml_file(model_config_path)
+    LOGGER.info(f"Loaded model config from: {model_config_path}")
 
     # Load dataset configuration
-    dataset_config_path = Path("dataset.toml")
+    dataset_config_path = Path(args.dataset_config)
     if not dataset_config_path.exists():
         raise FileNotFoundError(f"Dataset config not found: {dataset_config_path}")
     config = SatRainConfig.from_toml_file(dataset_config_path)
@@ -46,23 +60,27 @@ def main():
     )
 
     # Create ConvNeXt model
-    model_size = 'tiny'  # Options: 'tiny', 'small', 'base', 'large'
     convnext_model = create_convnext(
         n_channels=datamodule.num_features,
         n_outputs=1,
-        model_size=model_size,
-        pretrained=False,  # Use ImageNet pretrained weights
+        model_size=model_config.model_size,
+        pretrained=model_config.pretrained,
     )
 
-    # Create Lightning module
+    # Create experiment name that includes dataset configuration
+    dataset_prefix = config.get_experiment_name_prefix("convnext")
+    full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
+    
+    # Create Lightning module with custom name
     lightning_module = SatRainEstimationModule(
         model=convnext_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
+        name=full_experiment_name,
     )
     experiment_name = lightning_module.experiment_name
 
-    loggers = [TensorBoardLogger(save_dir="lightning_logs", name=f"{experiment_name}_convnext_{model_size}")]
+    loggers = [TensorBoardLogger(save_dir="lightning_logs", name=experiment_name)]
 
     # Create trainer
     trainer = L.Trainer(
@@ -79,7 +97,7 @@ def main():
     )
 
     # Train the model
-    LOGGER.info(f"Starting the training: {compute_config_path}")
+    LOGGER.info(f"Starting training: {model_config.model_name}")
     trainer.fit(lightning_module, datamodule)
 
     # Extract and save training metrics
@@ -90,19 +108,32 @@ def main():
     log_path = Path(current_log_dir)
     version_name = log_path.name
     metadata = {
-        "experiment": "convnext_regression",
+        "experiment": "convnext",
+        "model_name": model_config.model_name,
         "version": version_name,
         "approach": compute_config.approach,
+        "model_size": model_config.model_size,
+        "pretrained": str(model_config.pretrained),
     }
-    output_path = netcdf_dir / (f"{experiment_name}_convnext_{model_size}_{version_name}_metrics.nc")
+    output_path = netcdf_dir / (experiment_name + ".nc")
     tensorboard_to_netcdf(
         log_dir=current_log_dir, output_path=output_path, metadata=metadata
     )
 
-    # Save model with dataset config
+    # Save model with dataset and model config
     output_path = Path("models")
     output_path.mkdir(exist_ok=True)
-    lightning_module.save(config, output_path)
+    
+    # Save model manually to include both configs
+    model_path = output_path / f"{experiment_name}.pt"
+    state = lightning_module.model.state_dict()
+    torch.save({
+        "state_dict": state,
+        "satrain_config": config.to_dict(),
+        "model_config": model_config.to_dict(),
+    }, model_path)
+    
+    LOGGER.info(f"Model saved to: {model_path}")
 
 
 if __name__ == "__main__":

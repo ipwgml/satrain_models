@@ -1,0 +1,3 @@
+# ConvNeXt large configuration
+model_size = "large"
+pretrained = true

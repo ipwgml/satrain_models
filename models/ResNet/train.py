@@ -24,7 +24,8 @@ from satrain_models import (
     SatRainConfig,
     SatRainDataModule,
     SatRainEstimationModule,
-    create_resnet,
+    create_resnet_from_config,
+    ResNetConfig,
     tensorboard_to_netcdf,
 )
 
@@ -86,13 +87,18 @@ def main():
     """Training function"""
 
     parser = argparse.ArgumentParser(description="Train ResNet model")
-    parser.add_argument(
-        "compute_config", help="Path to compute config file.", default="compute.toml"
-    )
+    parser.add_argument("model_config", help="Path to model configuration TOML file")
     parser.add_argument(
         "--dataset-config", help="Path to dataset config file.", default="dataset.toml"
     )
     args = parser.parse_args()
+
+    # Load model configuration
+    model_config_path = Path(args.model_config)
+    if not model_config_path.exists():
+        raise FileNotFoundError(f"Model config not found: {model_config_path}")
+    model_config = ResNetConfig.from_toml_file(model_config_path)
+    LOGGER.info(f"Loaded model config from: {model_config_path}")
 
     # Load dataset configuration
     dataset_config_path = Path(args.dataset_config)
@@ -102,7 +108,7 @@ def main():
     LOGGER.info(f"Loaded SatRain config from: {dataset_config_path}")
 
     # Load compute configuration
-    compute_config_path = Path(args.compute_config)
+    compute_config_path = Path("compute.toml")
     if not compute_config_path.exists():
         raise FileNotFoundError(f"Compute config not found: {compute_config_path}")
     compute_config = ComputeConfig.from_toml_file(compute_config_path)
@@ -117,26 +123,36 @@ def main():
         persistent_workers=compute_config.persistent_workers,
     )
 
-    # Create model with increased capacity for XL dataset
-    # 4 layers with 3 blocks each: ~9M parameters
+    # Create model from configuration
+    model_config.n_channels = datamodule.num_features
+    resnet_model = create_resnet_from_config(
+        model_config=model_config,
+        num_features=datamodule.num_features,
+    )
+    
+    LOGGER.info(f"Created {model_config.model_name} with {sum(1 for _ in resnet_model.parameters())} parameters")
+    
+    # Store model architecture info for metadata
     model_arch_config = {
-        "n_channels": datamodule.num_features,
-        "n_outputs": 1,
-        "blocks_per_layer": 3,  # Increased from 2 for more depth
-        "n_layers": 4,          # 4 layers: 64->128->256->512 channels
-        "base_channels": 64,
+        "n_channels": model_config.n_channels,
+        "n_outputs": model_config.n_outputs,
+        "blocks_per_layer": model_config.blocks_per_layer,
+        "n_layers": model_config.n_layers,
+        "base_channels": model_config.base_channels,
+        "num_parameters": sum(p.numel() for p in resnet_model.parameters()),
+        "num_trainable_parameters": sum(p.numel() for p in resnet_model.parameters() if p.requires_grad),
     }
-    resnet_model = create_resnet(**model_arch_config)
-    model_arch_config["num_parameters"] = sum(p.numel() for p in resnet_model.parameters())
-    model_arch_config["num_trainable_parameters"] = sum(p.numel() for p in resnet_model.parameters() if p.requires_grad)
 
-    # Create Lightning module with dataset-aware naming
-    experiment_prefix = config.get_experiment_name_prefix("resnet")
+    # Create experiment name that includes dataset and model configuration
+    dataset_prefix = config.get_experiment_name_prefix("resnet")
+    full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
+    
+    # Create Lightning module with custom name
     lightning_module = SatRainEstimationModule(
         model=resnet_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
-        name=experiment_prefix,
+        name=full_experiment_name,
     )
     experiment_name = lightning_module.experiment_name
 
@@ -157,7 +173,7 @@ def main():
     )
 
     # Train the model
-    LOGGER.info(f"Starting the training: {compute_config_path}")
+    LOGGER.info(f"Starting training: {model_config.model_name}")
     trainer.fit(lightning_module, datamodule)
 
     # Extract and save training metrics (only on rank 0 to avoid file conflicts)
@@ -169,9 +185,11 @@ def main():
         log_path = Path(current_log_dir)
         version_name = log_path.name
         metadata = {
-            "experiment": experiment_prefix,
+            "experiment": "resnet",
+            "model_name": model_config.model_name,
             "version": version_name,
             "approach": compute_config.approach,
+            "num_parameters": sum(p.numel() for p in resnet_model.parameters()),
         }
         output_path = netcdf_dir / (experiment_name + ".nc")
         tensorboard_to_netcdf(
@@ -182,23 +200,21 @@ def main():
         output_path = Path("models")
         output_path.mkdir(exist_ok=True)
 
-        # Get experiment name right before saving (this is what save() will use internally)
-        saved_experiment_name = lightning_module.experiment_name
-        lightning_module.save(config, output_path)
+        # Save model manually to include both configs
+        model_path = output_path / f"{experiment_name}.pt"
+        state = lightning_module.model.state_dict()
+        torch.save({
+            "state_dict": state,
+            "satrain_config": config.to_dict(),
+            "model_config": model_config.to_dict(),
+        }, model_path)
 
-        # Verify the model was saved with expected name
-        expected_model_path = output_path / f"{saved_experiment_name}.pt"
-        if not expected_model_path.exists():
-            # Find the actual saved model file as fallback
-            saved_models = list(output_path.glob("*.pt"))
-            if saved_models:
-                saved_experiment_name = saved_models[-1].stem
-                LOGGER.warning(f"Model name mismatch, using: {saved_experiment_name}")
+        LOGGER.info(f"Model saved to: {model_path}")
 
-        # Save training metadata to separate JSON file (use same name as saved model)
+        # Save training metadata to separate JSON file
         save_training_metadata(
             output_path=output_path,
-            experiment_name=saved_experiment_name,
+            experiment_name=experiment_name,
             model_config=model_arch_config,
             dataset_config={
                 "base_sensor": config.base_sensor,

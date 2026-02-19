@@ -1,10 +1,10 @@
 # === Hardware Configuration ===
 accelerator = "gpu"          # "cpu", "gpu", "mps", "auto"
-devices = [0,1]              # Number of devices (integer for CPU, list [0,1] for GPUs)
+devices = [0]               # Number of devices (integer for CPU, list [0] for GPUs)
 precision = "16-mixed"       # Mixed precision for ~2x speedup on GPU
 
 # === Training Configuration ===
-max_epochs = 100             # Overnight training with XL dataset
+max_epochs = 100
 batch_size = 8               # Training batch size (per GPU); 8 if 'gridded'; 128 if 'on_swath'
 approach = "adamw_warmup_cosine_annealing_restarts"
 

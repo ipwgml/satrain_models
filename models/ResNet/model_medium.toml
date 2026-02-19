@@ -1,0 +1,5 @@
+n_channels = 3  # Overwritten by train.py
+n_outputs = 1
+blocks_per_layer = 2
+n_layers = 4
+base_channels = 64

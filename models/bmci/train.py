@@ -174,7 +174,7 @@ def main():
         "model_type": "BMCI",
         "num_samples": results["num_samples"],
         "num_features": results["num_features"],
-        "cutoff": cutoff,
+        "cutoff": str(cutoff),
     }
     metrics_data.attrs.update(metadata)
 
