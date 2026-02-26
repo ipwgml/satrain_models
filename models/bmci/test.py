@@ -106,7 +106,7 @@ def main():
         # Model complexity metrics
         "num_samples": bmci_model.X.shape[0] if bmci_model.X is not None else 0,
         "num_features": bmci_model.X.shape[1] if bmci_model.X is not None else 0,
-        "cutoff": bmci_model.cutoff,
+        "cutoff": "None" if bmci_model.cutoff is None else bmci_model.cutoff,
         "sigma_mean": float(np.mean(np.sqrt(1.0 / bmci_model.Sinv))),
         "sigma_std": float(np.std(np.sqrt(1.0 / bmci_model.Sinv))),
     }
