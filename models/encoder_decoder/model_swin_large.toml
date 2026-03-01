@@ -1,0 +1,5 @@
+block_factory = "SwinAttention"
+channels = [92, 184, 368, 736]
+in_channels = 3
+depths = [3, 3, 4, 4]
+bilinear = true
