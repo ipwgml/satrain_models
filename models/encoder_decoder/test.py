@@ -103,12 +103,15 @@ def main():
     
     LOGGER.info(f"Loaded {model_config.model_name} with {encoder_decoder_model.num_parameters:,} parameters")
 
+    dataset_prefix = satrain_config.get_experiment_name_prefix("efficient_net_v2")
+    full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
+
     # Create Lightning module
     lightning_module = SatRainEstimationModule(
         model=encoder_decoder_model,
         loss=nn.MSELoss(),
         approach=compute_config.approach,
-        name=model_config.model_name,
+        name=full_experiment_name,
     )
     experiment_name = lightning_module.experiment_name
 
