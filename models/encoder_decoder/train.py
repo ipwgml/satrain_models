@@ -22,25 +22,11 @@ from satrain_models import (
 from satrain_models.encoder_decoder import (
     EncoderDecoder,
     EncoderDecoderConfig,
-    Conv2dBnReLU,
-    Conv2dLnGELU,
-    Conv2dLnReLU,
-    ResidualBlock,
-    ResNeXtBlock,
-    InvertedBottleneck
+    BLOCK_FACTORIES,
 )
 
-LOGGER = logging.getLogger("encoder_decoder_training")
 
-# Available block classes mapping
-BLOCK_FACTORIES = {
-    "Conv2dBnReLU": Conv2dBnReLU,
-    "Conv2dLnGELU": Conv2dLnGELU,
-    "Conv2dLnReLU": Conv2dLnReLU,
-    "ResidualBlock": ResidualBlock,
-    "ResNeXtBlock": ResNeXtBlock,
-    "InvertedBottleneck": InvertedBottleneck,
-}
+LOGGER = logging.getLogger("encoder_decoder_training")
 
 
 def create_encoder_decoder_from_config(model_config: EncoderDecoderConfig, num_features: int) -> EncoderDecoder:

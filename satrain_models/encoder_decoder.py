@@ -1360,3 +1360,14 @@ def load_model(model_path: Union[str, Path]) -> EncoderDecoder:
     )
     model.load_state_dict(state)
     return model, satrain_config
+
+
+BLOCK_FACTORIES = {
+    "Conv2dBnReLU": Conv2dBnReLU,
+    "Conv2dLnGELU": Conv2dLnGELU,
+    "Conv2dLnReLU": Conv2dLnReLU,
+    "ResidualBlock": ResidualBlock,
+    "ResNeXtBlock": ResNeXtBlock,
+    "InvertedBottleneck": InvertedBottleneck,
+    "SwinAttention": SwinAttention,
+}

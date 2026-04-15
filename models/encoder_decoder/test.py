@@ -21,26 +21,15 @@ from satrain_models import (
 from satrain_models.encoder_decoder import (
     EncoderDecoder,
     EncoderDecoderConfig,
-    Conv2dBnReLU,
-    Conv2dLnGELU,
-    Conv2dLnReLU,
-    ResNeXtBlock,
+    BLOCK_FACTORIES
 )
 
 LOGGER = logging.getLogger(__name__)
 
-# Available block classes mapping
-BLOCK_CLASSES = {
-    "Conv2dBnReLU": Conv2dBnReLU,
-    "Conv2dLnGELU": Conv2dLnGELU,
-    "Conv2dLnReLU": Conv2dLnReLU,
-    "ResNeXtBlock": ResNeXtBlock,
-}
-
 
 def create_encoder_decoder_from_config(model_config: EncoderDecoderConfig, num_features: int) -> EncoderDecoder:
     """Create EncoderDecoder model from configuration."""
-    block_factory = BLOCK_CLASSES[model_config.block_factory]
+    block_factory = BLOCK_FACTORIES[model_config.block_factory]
     
     return EncoderDecoder(
         block_factory=block_factory,
