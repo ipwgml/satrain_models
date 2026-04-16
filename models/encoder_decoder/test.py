@@ -103,7 +103,7 @@ def main():
     
     LOGGER.info(f"Loaded {model_config.model_name} with {encoder_decoder_model.num_parameters:,} parameters")
 
-    dataset_prefix = satrain_config.get_experiment_name_prefix("efficient_net_v2")
+    dataset_prefix = satrain_config.get_experiment_name_prefix("encoder_decoder")
     full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
 
     # Create Lightning module
