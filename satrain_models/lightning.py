@@ -6,6 +6,7 @@ Provides a LightningModule implementing three training recipes.
 """
 
 import logging
+import math
 import typing
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -15,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import xarray as xr
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import Callback, EarlyStopping, ModelCheckpoint
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
@@ -35,6 +36,53 @@ if typing.TYPE_CHECKING:
     from .config import SatRainConfig
 
 LOGGER = logging.getLogger(__name__)
+
+
+class KeepAllImprovementsCheckpoint(ModelCheckpoint):
+    """ModelCheckpoint that never deletes prior 'best' files.
+
+    Combined with save_top_k set very large, this preserves the full
+    history of validation-loss improvements as separate files. Useful
+    when later training instability (e.g. BN running-stat corruption
+    after an LR restart in fp16) can poison the 'current best' and
+    we want to recover an earlier healthy checkpoint.
+    """
+
+    def _remove_checkpoint(self, trainer, filepath):  # type: ignore[override]
+        return
+
+
+class BNCollapseDetector(Callback):
+    """Stop training if val/loss reads as ~0 for too many consecutive epochs.
+
+    BatchNorm running stats can collapse (typically after an fp16 LR-restart
+    spike), making eval-mode outputs degenerate and val/loss read as 0.0.
+    Continuing wastes hours; abort early so the next attempt can begin.
+    """
+
+    def __init__(self, threshold: float = 1e-6, patience: int = 2):
+        super().__init__()
+        self.threshold = threshold
+        self.patience = patience
+        self._streak = 0
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        metric = trainer.callback_metrics.get("val/loss")
+        if metric is None:
+            return
+        val = float(metric)
+        if math.isnan(val) or val <= self.threshold:
+            self._streak += 1
+            if self._streak >= self.patience:
+                LOGGER.error(
+                    "val/loss=%.6g for %d consecutive epochs — likely BN collapse; "
+                    "stopping training.",
+                    val,
+                    self._streak,
+                )
+                trainer.should_stop = True
+        else:
+            self._streak = 0
 
 
 class SatRainEstimationModule(L.LightningModule):
@@ -58,13 +106,25 @@ class SatRainEstimationModule(L.LightningModule):
         approach: str = "adamw_warmup_cosine_annealing",
         learning_rate: Optional[float] = None,
         name: Optional[str] = None,
+        satrain_config: Optional[Union[Dict[str, Any], "SatRainConfig"]] = None,
+        model_config: Optional[Union[Dict[str, Any], Any]] = None,
     ):
         """
         Args:
             model: A PyTorch model implementing the model to train.
             loss: A loss module defining the loss used to train the model.
             approach: A string specifying the training approach.
+            satrain_config: SatRainConfig (or its dict) — embedded in checkpoints
+                so any saved .ckpt is self-sufficient as a final model.
+            model_config: Architecture config (or its dict), embedded the same way.
         """
+        # Coerce configs to plain dicts so save_hyperparameters can serialize
+        # them cleanly and downstream loaders don't need the original classes.
+        if satrain_config is not None and hasattr(satrain_config, "to_dict"):
+            satrain_config = satrain_config.to_dict()
+        if model_config is not None and hasattr(model_config, "to_dict"):
+            model_config = model_config.to_dict()
+
         super().__init__()
         self.save_hyperparameters(ignore=["model", "loss"])  # keeps logs tidy
 
@@ -127,9 +187,16 @@ class SatRainEstimationModule(L.LightningModule):
         # Create mask for finite values in both prediction and target
         mask = torch.isfinite(pred) & torch.isfinite(y)
 
-        # If no finite values, return zero loss (prevents NaN gradients)
+        # Edge case: entire batch is NaN/inf (no finite values at all).
+        # Return a zero loss that is:
+        #   1. Connected to the computation graph — so AMP GradScaler can
+        #      record inf checks (a detached leaf tensor would trigger
+        #      "No inf checks were recorded for this optimizer").
+        #   2. Free of NaN — nan_to_num replaces NaN/inf with finite values
+        #      first, because NaN * 0.0 = NaN (IEEE 754) which would poison
+        #      all model weights via gradient propagation.
         if not mask.any():
-            return torch.tensor(0.0, device=y.device, requires_grad=True)
+            return torch.nan_to_num(pred).sum() * 0.0
 
         # Compute loss only over finite values
         pred_masked = pred[mask]
@@ -580,23 +647,56 @@ class SatRainEstimationModule(L.LightningModule):
 
         raise ValueError("Unknow training approach '%s'.", hp.approach)
 
-    def default_callbacks(self) -> List[L.Callback]:
+    def default_callbacks(
+        self,
+        dirpath: Optional[Union[str, Path]] = None,
+        keep_all_improvements: bool = True,
+        bn_collapse_detector: bool = True,
+    ) -> List[L.Callback]:
         """
         Returns a sensible EarlyStopping and ModelCheckpoint list.
-        Use in Trainer(callbacks=SatRainModule.default_callbacks(...))
+
+        Args:
+            dirpath: Directory where checkpoints are written. Defaults to
+                ``checkpoints/<experiment_name>`` so concurrent runs of
+                different experiments don't clash. Pass an explicit path
+                to claim a dir atomically before training starts.
+            keep_all_improvements: If True (default), every val/loss
+                improvement is kept as its own file (never overwritten),
+                so a healthy earlier checkpoint can be recovered if
+                later training collapses.
+            bn_collapse_detector: If True, abort training when val/loss
+                reads as ~0 for two consecutive epochs.
         """
-        callbacks = [
-            ModelCheckpoint(
-                dirpath="checkpoints",
-                filename="{epoch}-{val_loss:.4f}",
+        if dirpath is None:
+            dirpath = Path("checkpoints") / self.experiment_name
+
+        ckpt_cls = KeepAllImprovementsCheckpoint if keep_all_improvements else ModelCheckpoint
+        callbacks: List[L.Callback] = [
+            ckpt_cls(
+                dirpath=str(dirpath),
+                # Lightning replaces '/' with '_' in the rendered filename, so this
+                # actually picks up the logged 'val/loss' metric (the previous
+                # '{val_loss:.4f}' silently fell back to 0.0000 since no metric
+                # named 'val_loss' was logged).
+                filename="best_{epoch}-{val/loss:.4f}",
                 monitor="val/loss",
                 mode="min",
+                # save_top_k=1 means Lightning only writes a file when the new
+                # epoch beats the current best (true "improvement-only" save).
+                # The KeepAllImprovementsCheckpoint subclass no-ops the eviction
+                # of the prior best, so it stays on disk — the net effect is a
+                # complete history of strictly-improving checkpoints rather than
+                # one save per epoch.
                 save_top_k=1,
                 save_last=True,
                 auto_insert_metric_name=False,
             ),
         ]
-        callbacks[0].CHECKPOINT_NAME_LAST = self.experiment_name
+        callbacks[0].CHECKPOINT_NAME_LAST = "last"
+
+        if bn_collapse_detector:
+            callbacks.append(BNCollapseDetector())
 
         if self.approach in {"sgd_simple", "adamw_simple"}:
             callbacks += [
