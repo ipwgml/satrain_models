@@ -37,18 +37,48 @@ if typing.TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 
+APPROACHES = {
+    "sgd_lr_search",
+    "sgd",
+    "sgd_reduce_on_plateau",
+    "sgd_cosine_annealing_restarts",
+    "sgd_warmup_cosine_annealing",
+    "sgd_warmup_cosine_annealing_restarts",
+    "adamw_lr_search",
+    "adamw",
+    "adamw_reduce_on_plateau",
+    "adamw_cosine_annealing_restarts",
+    "adamw_warmup_cosine_annealing",
+    "adamw_warmup_cosine_annealing_restarts",
+}
+
+
 class SatRainEstimationModule(L.LightningModule):
     """
-    Lightning module for SatRain precipitation estimation with three training approaches:
+    Lightning module for training precipitation estimation models on the SatRain
+    benchmark dataset.
 
-    - 'sgd_simple': SGD + optional Nesterov, no scheduler (early stopping via callback)
-    - 'adamw_simple': AdamW, no scheduler (early stopping via callback)
-    - 'adamw_cosine': AdamW + CosineAnnealingWarmRestarts scheduler
+    The module support a range of predefined training approaches that were assessed
+    as part of the development of the SatRain baseline CNN retrieval.
 
-    Logged metrics (per step/epoch):
-      - train/loss
-      - val/loss, val/mse, val/mae, val/corrcoef
-      - lr (current learning rate of the first param group)
+    The supported training approaches are the following:
+
+        - 'sgd_lr_search': Learning rate (LR) search with the Stochastic Gradient
+          Descent (SGD) optimizer.
+        - 'sgd': SGD without LR schedule.
+        - 'sgd_reduce_on_plateau': SGD with LR reduction when validation loss plateaus.
+        - 'sgd_cosine_annealing_restarts': SGD with cosine annealing LR schedule and warm restarts.
+        - 'sgd_warmup_cosine_annealing': SGD with warmup and cosine annealing LR schedule.
+        - 'sgd_warmup_cosine_annealing_restarts': SGD with warmup, cosine annealing LR schedule
+          and warm restarts.
+        - 'adamw_lr_search': LR search with the AdamW optimizer.
+        - 'adamw': AdamW without schedule.
+        - 'adamw_reduce_on_plateau': AdamW with LR reduction when validation loss plateaus.
+        - 'adamw_cosine_annealing_restarts': AdamW cosine annealing LR schedule and warm restarts.
+        - 'adamw_warmup_cosine_annealing': AdamW with warmup and cosine annealing LR schedule.
+        - 'adamw_warmup_cosine_annealing_restarts': AdamW with warmup and cosine annealing LR schedule
+          and warm restarts.
+
     """
 
     def __init__(
@@ -64,6 +94,8 @@ class SatRainEstimationModule(L.LightningModule):
             model: A PyTorch model implementing the model to train.
             loss: A loss module defining the loss used to train the model.
             approach: A string specifying the training approach.
+            learning_rate: The initial learning rate to use.
+            name: Optional name to use to prefix the experiment name with.
         """
         super().__init__()
         self.save_hyperparameters(ignore=["model", "loss"])  # keeps logs tidy
@@ -71,22 +103,8 @@ class SatRainEstimationModule(L.LightningModule):
         self.model = model
         self.criterion = loss
 
-        valid = {
-            "sgd_lr_search",
-            "adamw_lr_search",
-            "sgd",
-            "adamw",
-            "sgd_reduce_on_plateau",
-            "adamw_reduce_on_plateau",
-            "sgd_warmup_cosine_annealing",
-            "adamw_warmup_cosine_annealing",
-            "sgd_warmup_cosine_annealing_restarts",
-            "adamw_warmup_cosine_annealing_restarts",
-            "sgd_cosine_annealing_restarts",
-            "adamw_cosine_annealing_restarts",
-        }
-        if approach not in valid:
-            raise ValueError(f"Unknown approach '{approach}'. Choose from {valid}.")
+        if approach not in APPROACHES:
+            raise ValueError(f"Unknown approach '{approach}'. Choose from {APPROACHES}.")
         self.approach = approach
         self.learning_rate = learning_rate
 
@@ -674,6 +692,7 @@ class SatRainEstimationModule(L.LightningModule):
                     results["probability_of_precip"] = (dims, pop)
                     precip_flag = self.precip_threshold <= pop
                     results["precip_flag"] = (dims, precip_flag)
+
                 if "probability_of_heavy_precip" in pred:
                     pohp = pred["probability_of_heavy_precip"].select(feature_dim, 0)
                     pohp = torch.sigmoid(pohp).cpu().numpy()
@@ -704,3 +723,250 @@ class SatRainEstimationModule(L.LightningModule):
         torch.save(
             {"state_dict": state, "satrain_config": satrain_config.to_dict()}, path
         )
+
+
+class SatRainDetectionModule(SatRainEstimationModule):
+    """
+    Lightning module to train precipitation detection retrievals on the SatRain
+    benchmark dataset.
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        loss: nn.Module = nn.BCEWithLogitsLoss(),
+        approach: str = "adamw_warmup_cosine_annealing",
+        learning_rate: Optional[float] = None,
+        name: Optional[str] = None,
+    ):
+        """
+        Args:
+            model: A PyTorch model implementing the model to train.
+            loss: A loss module defining the loss used to train the model.
+            approach: A string specifying the training approach.
+            learning_rate: The initial learning rate to use.
+            name: Optional name to use to prefix the experiment name with.
+        """
+        super().__init__(
+            model=model,
+            loss=loss,
+            approach=approach,
+            learning_rate=learning_rate,
+            name=name
+        )
+
+    @property
+    def experiment_name(self):
+        version = 0
+        while True:
+            if self.name is None:
+                name = f"detection_{self.approach}_v{version:02}"
+            else:
+                name = f"{self.name}_detection_{self.approach}_v{version:02}"
+            if not (Path("checkpoints") / (name + ".ckpt")).exists():
+                break
+            version += 1
+        return name
+
+
+    def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        """
+        Calculates loss for single input batch and logs errors.
+
+        Args:
+            batch: The input and target data.
+            batch_idx: Not used.
+
+        Returns:
+            A torch.Tensor containing the loss.
+        """
+        inputs, targets = batch
+
+        # Handle input data (can be stacked tensor or dict)
+        if isinstance(inputs, dict):
+            # If not stacked, concatenate input channels
+            x = torch.cat(list(inputs.values()), dim=1)
+        else:
+            x = inputs
+
+        # Extract target (surface precipitation)
+        if isinstance(targets, dict):
+            y = targets["surface_precip"]
+        else:
+            y = targets
+
+        invalid = torch.isnan(y)
+        y = (0.1 < y).to(dtype=y.dtype)
+        y[invalid] = torch.nan
+
+        # Ensure target is float32 and has the right shape
+        y = y.float()
+
+        pred = self(x)
+
+        # Squeeze output to match target shape if needed
+        if pred.dim() == 4 and pred.size(1) == 1:
+            pred = pred.squeeze(1)
+
+        # Calculate loss only over finite values
+        loss = self._compute_finite_loss(pred, y)
+
+        # Log loss
+        self.log(
+            f"train/loss",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=x.size(0),
+        )
+
+        # Log LR (first param group) once per step for train
+        opt = self.optimizers()
+        if opt is not None:
+            if isinstance(opt, (list, tuple)):
+                lr = opt[0].param_groups[0]["lr"]
+            else:
+                lr = opt.param_groups[0]["lr"]
+            self.log(
+                "lr", lr, on_step=True, on_epoch=False, prog_bar=False, logger=True
+            )
+
+        return loss
+
+    def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        """Validation step with comprehensive metrics computation."""
+        inputs, targets = batch
+
+        # Handle input data (can be stacked tensor or dict)
+        if isinstance(inputs, dict):
+            # If not stacked, concatenate input channels
+            x = torch.cat(list(inputs.values()), dim=1)
+        else:
+            x = inputs
+
+        # Extract target (surface precipitation)
+        if isinstance(targets, dict):
+            y = targets["surface_precip"]
+        else:
+            y = targets
+
+        invalid = torch.isnan(y)
+        y = (0.1 < y).to(dtype=y.dtype)
+        y[invalid] = torch.nan
+
+        # Ensure target is float32 and has the right shape
+        y = y.float()
+
+        pred = self(x)
+
+        # Squeeze output to match target shape if needed
+        if pred.dim() == 4 and pred.size(1) == 1:
+            pred = pred.squeeze(1)
+
+        # Compute main loss only over finite values
+        loss = self._compute_finite_loss(pred, y)
+
+        # Log main loss
+        self.log(
+            "val/loss",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=x.size(0),
+        )
+
+        # Compute and log validation metrics
+        # Flatten tensors for metric computation
+        y_flat = y.view(-1)
+        pred_flat = pred.view(-1)
+
+        # Remove NaN/inf values for metric computation (only use finite values)
+        mask = torch.isfinite(y_flat) * torch.isfinite(pred_flat)
+        if mask.sum() > 0:
+            y_clean = y_flat[mask]
+            pred_clean = pred_flat[mask]
+
+        # Only works for spatial format
+        if pred.ndim == 4:
+            self.plot_samples.update(pred, y)
+
+        return loss
+
+
+    def get_retrieval_fn(self, satrain_config, compute_config):
+        """
+        Get retrieval callback function for evaluation.
+        """
+        if compute_config.accelerator in ["gpu", "cuda"]:
+            if compute_config.devices is None:
+                device_ind = 0
+            else:
+                device_ind = compute_config.devices[0]
+            device = f"cuda:{device_ind}"
+        else:
+            device = "cpu"
+        dtype = compute_config.dtype
+        self.model = self.model.to(device=device, dtype=dtype).eval()
+
+        def retrieval_fn(input_data: xr.Dataset) -> xr.Dataset:
+            """
+            Run retrieval on input data.
+            """
+            feature_dim = 0
+            if "scan" in input_data.dims:
+                spatial_dims = ("scan", "pixel")
+            elif "latitude" in input_data.dims:
+                spatial_dims = ("latitude", "longitude")
+            else:
+                spatial_dims = ()
+
+            if "batch" in input_data.dims:
+                dims = ("batch",) + spatial_dims
+                feature_dim += 1
+            else:
+                dims = spatial_dims
+
+            inpt = {}
+            for name in satrain_config.features:
+
+                inpt_data = torch.tensor(input_data[name].data).to(device, dtype)
+                if len(dims) == 1:
+                    inpt_data = inpt_data.transpose(0, 1)
+                inpt[name] = inpt_data
+
+            inpt = torch.cat(list(inpt.values()), dim=feature_dim)
+
+            with torch.no_grad():
+
+                pred = self.model(inpt)
+                if isinstance(pred, torch.Tensor):
+                    pred = {"probability_of_precip": pred}
+
+                results = xr.Dataset()
+                if "surface_precip" in pred:
+                    results["surface_precip"] = (
+                        dims,
+                        pred["surface_precip"]
+                        .select(feature_dim, 0)
+                        .float()
+                        .cpu()
+                        .numpy(),
+                    )
+                if "probability_of_precip" in pred:
+                    pop = pred["probability_of_precip"].select(feature_dim, 0)
+                    pop = torch.sigmoid(pop).float().cpu().numpy()
+                    results["probability_of_precip"] = (dims, pop)
+                    precip_flag = 0.5 <= pop
+                    results["precip_flag"] = (dims, precip_flag)
+                if "probability_of_heavy_precip" in pred:
+                    pohp = pred["probability_of_heavy_precip"].select(feature_dim, 0)
+                    pohp = torch.sigmoid(pohp).float().cpu().numpy()
+                    results["probability_of_heavy_precip"] = (dims, pohp)
+                    heavy_precip_flag = 0.5 <= pohp
+                    results["heavy_precip_flag"] = (dims, heavy_precip_flag)
+
+            return results
+
+        return retrieval_fn

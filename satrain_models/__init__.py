@@ -2,7 +2,7 @@
 
 from .config import ComputeConfig, SatRainConfig
 from .datamodule import SatRainDataModule
-from .lightning import SatRainEstimationModule
+from .lightning import SatRainEstimationModule, SatRainDetectionModule
 from .random_forest import RandomForestRetrieval, create_random_forest_retrieval
 from .resnet import ResNet, create_resnet, ResNetConfig, create_resnet_from_config  # veljko
 from .tensorboard_to_netcdf import (
@@ -38,6 +38,7 @@ __all__ = [
     "SatRainConfig",
     "ComputeConfig",  # veljko
     "SatRainEstimationModule",
+    "SatRainDetectionModule",
     "SatRainDataModule",
     "extract_scalars_from_tensorboard",
     "scalars_to_netcdf",
