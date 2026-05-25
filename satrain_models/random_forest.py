@@ -12,7 +12,7 @@ import xarray as xr
 
 try:
     import joblib
-    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
     from sklearn.metrics import mean_squared_error, r2_score
 
     SKLEARN_AVAILABLE = True
@@ -31,6 +31,7 @@ class RandomForestRetrieval:
 
     def __init__(
         self,
+        task: str = "precipitation_estimation",
         n_estimators: int = 100,
         max_depth: Optional[int] = None,
         min_samples_split: int = 2,
@@ -45,6 +46,8 @@ class RandomForestRetrieval:
         Initialize Random Forest retrieval model.
 
         Args:
+            task: The retrieval task to perform. Should be one of 'precipitation_estimation',
+                'precipitation_detection', or 'heavy_precipitation_detection'.
             n_estimators: Number of trees in the forest
             max_depth: Maximum depth of the trees (None for unlimited)
             min_samples_split: Minimum samples required to split an internal node
@@ -61,6 +64,7 @@ class RandomForestRetrieval:
                 "scikit-learn is not installed. Please install it with: pip install scikit-learn"
             )
 
+        self.task = task
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
@@ -72,20 +76,33 @@ class RandomForestRetrieval:
         self.kwargs = kwargs
 
         # Create Random Forest model
-        self.model = RandomForestRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            max_features=max_features,
-            bootstrap=bootstrap,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            **kwargs,
-        )
-
+        if self.task.lower() == "precipitation_estimation":
+            self.model = RandomForestRegressor(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_features=max_features,
+                bootstrap=bootstrap,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                **kwargs,
+            )
+        else:
+            self.model = RandomForestClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_features=max_features,
+                bootstrap=bootstrap,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                **kwargs,
+            )
         self._is_fitted = False
         self._input_shape = None
+
 
     def _prepare_features(self, x: np.ndarray) -> np.ndarray:
         """
@@ -167,7 +184,6 @@ class RandomForestRetrieval:
             train_pred = self.model.predict(X_flat)
             train_mse = mean_squared_error(y_flat, train_pred)
             train_r2 = r2_score(y_flat, train_pred)
-            print(f"Training completed - MSE: {train_mse:.6f}, R²: {train_r2:.6f}")
 
             # Calculate validation metrics if provided
             if X_val is not None and y_val is not None:
@@ -176,7 +192,6 @@ class RandomForestRetrieval:
                 val_pred = self.model.predict(X_val_flat)
                 val_mse = mean_squared_error(y_val_flat, val_pred)
                 val_r2 = r2_score(y_val_flat, val_pred)
-                print(f"Validation metrics - MSE: {val_mse:.6f}, R²: {val_r2:.6f}")
 
         self._is_fitted = True
         return self
@@ -199,7 +214,10 @@ class RandomForestRetrieval:
         X_flat = self._prepare_features(X)
 
         # Make predictions
-        y_pred = self.model.predict(X_flat)
+        if self.task == "precipitation_estimation":
+            y_pred = self.model.predict(X_flat)
+        else:
+            y_pred = self.model.predict_proba(X_flat)[:, 1]
 
         return self._prepare_output(y_pred)
 
@@ -273,6 +291,7 @@ class RandomForestRetrieval:
 
 
 def create_random_forest_retrieval(
+    task: str,
     n_estimators: int = 100,
     max_depth: Optional[int] = None,
     max_features: Union[str, int, float] = "sqrt",
@@ -282,6 +301,8 @@ def create_random_forest_retrieval(
     Create a Random Forest retrieval model.
 
     Args:
+        task: The retrieval task to perform. Should be one of 'precipitation_estimation',
+            'precipitation_detection', or 'heavy_precipitation_detection'.
         n_estimators: Number of trees in the forest
         max_depth: Maximum depth of the trees
         max_features: Number of features to consider when looking for the best split
@@ -291,6 +312,7 @@ def create_random_forest_retrieval(
         RandomForestRetrieval: Random Forest model instance
     """
     return RandomForestRetrieval(
+        task=task,
         n_estimators=n_estimators,
         max_depth=max_depth,
         max_features=max_features,

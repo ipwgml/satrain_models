@@ -45,7 +45,18 @@ def create_retrieval_fn(model, satrain_config, datamodule):
             features += list(inpt.features.keys())
         inpt = np.concatenate([input_data[var].data for var in features], axis=1)
         pred = model.predict(inpt.T).squeeze()
-        results = xr.Dataset({"surface_precip": (("batch",), pred)})
+        if model.task.lower() == "precipitation_estimation":
+            results = xr.Dataset({"surface_precip": (("batch",), pred)})
+        elif model.task.lower() == "precipitation_detection":
+            results = xr.Dataset({
+                "probability_of_precip": (("batch",), pred),
+                "precip_flag": (("batch",), 0.5 < pred),
+            })
+        elif model.task.lower() == "heavy_precipitation_detection":
+            results = xr.Dataset({
+                "probability_of_heavy_precip": (("batch",), pred),
+                "heavy_precip_flag": (("batch",), 0.5 < pred),
+            })
         return results
 
     return retrieval_fn
@@ -102,6 +113,7 @@ def main():
     # Run evaluation on all domains using tabular format
     results = []
     domains = ["austria", "conus", "korea"]
+
     for domain in domains:
         LOGGER.info("Running evaluation for domain '%s'.", domain)
         evaluator = data_module.get_evaluator(domain)
@@ -127,6 +139,7 @@ def main():
     }
 
     # Add Random Forest configuration
+    rf_config = {name: float(val) if type(val) is bool else val for name, val in rf_config.items()}
     model_metadata.update(rf_config)
     results.attrs.update(model_metadata)
 
@@ -143,10 +156,8 @@ def main():
         domain_results = results.sel(domain=domain)
         if "mse" in domain_results.data_vars:
             mse = float(domain_results.mse.values)
-            print(f"{domain}: MSE = {mse:.6f}")
         if "correlation" in domain_results.data_vars:
             corr = float(domain_results.correlation.values)
-            print(f"{domain}: Correlation = {corr:.6f}")
 
 
 if __name__ == "__main__":

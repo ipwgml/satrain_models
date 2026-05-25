@@ -28,6 +28,7 @@ class XGBoostRetrieval:
 
     def __init__(
         self,
+        task: str = "precipitation_estimation",
         n_estimators: int = 100,
         max_depth: int = 6,
         learning_rate: float = 0.3,
@@ -42,6 +43,8 @@ class XGBoostRetrieval:
         Initialize XGBoost retrieval model.
 
         Args:
+            task: The retrieval task to perform. Should be one of 'precipitation_estimation',
+                'precipitation_detection', or 'heavy_precipitation_detection'.
             n_estimators: Number of boosting rounds
             max_depth: Maximum tree depth
             learning_rate: Learning rate (eta)
@@ -52,12 +55,12 @@ class XGBoostRetrieval:
             random_state: Random seed
             **kwargs: Additional XGBoost parameters
         """
-
         if not XGBOOST_AVAILABLE:
             raise ImportError(
                 "XGBoost is not installed. Please install it with: pip install xgboost"
             )
 
+        self.task = task.lower()
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.learning_rate = learning_rate
@@ -69,8 +72,19 @@ class XGBoostRetrieval:
         self.kwargs = kwargs
 
         # XGBoost parameters
+        if self.task == "precipitation_estimation":
+            objective = "reg:squared"
+        elif self.task.lower() == "precipitation_detection":
+            objective = "binary:logistic"
+        elif self.task.lower() == "heavy_precipitation_detection":
+            objective = "binary:logistic"
+        else:
+            raise ValueError(
+                f"Encountered unsupported task '{task}'."
+            )
+
         self.params = {
-            "objective": "reg:squarederror",
+            "objective": objective,
             "max_depth": max_depth,
             "eta": learning_rate,
             "subsample": subsample,
@@ -259,12 +273,18 @@ class XGBoostRetrieval:
 
 
 def create_xgboost(
-    n_estimators: int = 100, max_depth: int = 6, learning_rate: float = 0.3, **kwargs
+    task: str = "precipitation_estimation",
+    n_estimators: int = 100,
+    max_depth: int = 6,
+    learning_rate: float = 0.3,
+    **kwargs
 ) -> XGBoostRetrieval:
     """
     Create an XGBoost retrieval model.
 
     Args:
+        task: The retrieval task to perform. Should be one of 'precipitation_estimation',
+            'precipitation_detection', or 'heavy_precipitation_detection'.
         n_estimators: Number of boosting rounds
         max_depth: Maximum tree depth
         learning_rate: Learning rate
@@ -274,6 +294,7 @@ def create_xgboost(
         XGBoostRetrieval: XGBoost model instance
     """
     return XGBoostRetrieval(
+        task=task,
         n_estimators=n_estimators,
         max_depth=max_depth,
         learning_rate=learning_rate,

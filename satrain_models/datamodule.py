@@ -178,7 +178,7 @@ class SatRainDataModule(L.LightningDataModule):
         """Create prediction data loader (same as test for now)."""
         return self.test_dataloader()
 
-    def load_tabular_data(self, split: str):
+    def load_tabular_data(self, split: str, task: str = "precipitation_estimation"):
         """
         Load data in tabular format suitable for non-PyTorch models like XGBoost.
 
@@ -204,7 +204,17 @@ class SatRainDataModule(L.LightningDataModule):
         )
 
         target_time = target.time
-        y = target.surface_precip.data
+
+        if task.lower() == "precipitation_estimation":
+            y = target.surface_precip.data
+        elif task.lower() == "precipitation_detection":
+            y = (0.1 < target.surface_precip.data)
+        elif task.lower() == "heavy_precipitation_detection":
+            y = (10.0 < target.surface_precip.data)
+        else:
+            raise ValueError(
+                f"Encountered unsupported task '{task}'."
+            )
 
         input_arrays = []
         for inpt in retrieval_input:

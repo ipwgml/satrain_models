@@ -26,7 +26,8 @@ LOGGER = logging.getLogger("xgboost_training")
 class XGBoostTrainer:
     """Custom trainer for XGBoost models using SatRain tabular data."""
 
-    def __init__(self, model, datamodule, config):
+    def __init__(self, task, model, datamodule, config):
+        self.task = task
         self.model = model
         self.datamodule = datamodule
         self.config = config
@@ -35,10 +36,10 @@ class XGBoostTrainer:
     def train(self):
         """Train the XGBoost model."""
         LOGGER.info("Loading training data in tabular format...")
-        X_train, y_train = self.datamodule.load_tabular_data("training")
+        X_train, y_train = self.datamodule.load_tabular_data("training", task=self.task)
 
         LOGGER.info("Loading validation data in tabular format...")
-        X_val, y_val = self.datamodule.load_tabular_data("validation")
+        X_val, y_val = self.datamodule.load_tabular_data("validation", task=self.task)
 
         # Remove NaN values
         train_mask = np.isfinite(X_train).all(axis=1) & np.isfinite(y_train)
@@ -55,7 +56,6 @@ class XGBoostTrainer:
         LOGGER.info("Starting XGBoost training...")
         start_time = time.time()
 
-        print("SHAPE :: ", X_train.shape)
         self.model.fit(
             X_train,
             y_train,
@@ -64,7 +64,6 @@ class XGBoostTrainer:
             verbose=True,
         )
 
-        print(X_train.shape, X_val.shape)
         training_time = time.time() - start_time
         LOGGER.info(f"Training completed in {training_time:.2f} seconds")
 
@@ -72,16 +71,7 @@ class XGBoostTrainer:
         train_pred = self.model.predict(X_train)
         val_pred = self.model.predict(X_val)
 
-        train_mse = np.mean((train_pred.squeeze() - y_train) ** 2)
-        val_mse = np.mean((val_pred.squeeze() - y_val) ** 2)
-
-        LOGGER.info(
-            f"Final metrics - Train MSE: {train_mse:.6f}, Val MSE: {val_mse:.6f}"
-        )
-
         return {
-            "train_mse": float(train_mse),
-            "val_mse": float(val_mse),
             "training_time": training_time,
             "num_parameters": self.model.num_parameters,
         }
@@ -121,9 +111,11 @@ def main():
 
     # Create data module
     datamodule = SatRainDataModule(config=config)
+    task = xgb_config.get("task", "precipitation_estimation")
 
     # Create model
     xgb_model = create_xgboost(
+        task=task,
         n_estimators=xgb_config.get("n_estimators", 1000),
         max_depth=xgb_config.get("max_depth", 6),
         learning_rate=xgb_config.get("learning_rate", 0.1),
@@ -137,7 +129,12 @@ def main():
     LOGGER.info(f"Created XGBoost model")
 
     # Create trainer and train
-    trainer = XGBoostTrainer(model=xgb_model, datamodule=datamodule, config=xgb_config)
+    trainer = XGBoostTrainer(
+        task=task,
+        model=xgb_model,
+        datamodule=datamodule,
+        config=xgb_config
+    )
 
     # Train the model
     LOGGER.info(f"Starting training with config: {compute_config_path}")
@@ -149,7 +146,11 @@ def main():
     output_path.mkdir(exist_ok=True)
 
     # Create experiment name based on dataset configuration and XGBoost configuration
-    dataset_prefix = config.get_experiment_name_prefix("xgboost")
+    if task == "precipitation_estimation":
+        dataset_prefix = config.get_experiment_name_prefix("xgboost_")
+    else:
+        dataset_prefix = config.get_experiment_name_prefix(f"xgboost_{task}")
+
     config_parts = [
         f"n{xgb_config.get('n_estimators', 1000)}",
         f"d{xgb_config.get('max_depth', 6)}",
@@ -191,35 +192,6 @@ def main():
         )
 
     LOGGER.info(f"Model saved to {model_path} and {full_model_path}")
-
-    # Save training metrics to NetCDF
-    LOGGER.info("Saving training metrics...")
-    netcdf_dir = Path("netcdf_metrics")
-    netcdf_dir.mkdir(exist_ok=True)
-
-    # Create metrics dataset
-    metrics_data = xr.Dataset(
-        {
-            "train_mse": (["epoch"], [results["train_mse"]]),
-            "val_mse": (["epoch"], [results["val_mse"]]),
-        },
-        coords={"epoch": [0]},
-    )
-
-    metadata = {
-        "experiment": dataset_prefix,
-        "experiment_name": experiment_name,
-        "version": f"v{version}",
-        "model_type": "XGBoost",
-        "num_parameters": results["num_parameters"],
-        "training_time": results["training_time"],
-        **xgb_config,
-    }
-    metrics_data.attrs.update(metadata)
-
-    output_path = netcdf_dir / f"{experiment_name}.nc"
-    metrics_data.to_netcdf(output_path)
-    LOGGER.info(f"Metrics saved to {output_path}")
 
 
 if __name__ == "__main__":

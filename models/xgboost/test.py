@@ -31,6 +31,7 @@ def create_retrieval_fn(model, satrain_config, datamodule):
     Create retrieval function for XGBoost model.
     """
 
+
     def retrieval_fn(input_data: xr.Dataset) -> xr.Dataset:
         """
         Run retrieval on input data.
@@ -45,7 +46,18 @@ def create_retrieval_fn(model, satrain_config, datamodule):
             features += list(inpt.features.keys())
         inpt = np.concatenate([input_data[var].data for var in features], axis=1)
         pred = model.predict(inpt.T).squeeze()
-        results = xr.Dataset({"surface_precip": (("batch",), pred)})
+        if model.task.lower() == "precipitation_estimation":
+            results = xr.Dataset({"surface_precip": (("batch",), pred)})
+        elif model.task.lower() == "precipitation_detection":
+            results = xr.Dataset({
+                "probability_of_precip": (("batch",), pred),
+                "precip_flag": (("batch",), 0.5 < pred),
+            })
+        elif model.task.lower() == "heavy_precipitation_detection":
+            results = xr.Dataset({
+                "probability_of_heavy_precip": (("batch",), pred),
+                "heavy_precip_flag": (("batch",), 0.5 < pred),
+            })
         return results
 
     return retrieval_fn

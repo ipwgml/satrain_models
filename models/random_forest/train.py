@@ -26,16 +26,17 @@ LOGGER = logging.getLogger("random_forest_training")
 class RandomForestTrainer:
     """Custom trainer for Random Forest models using SatRain tabular data."""
 
-    def __init__(self, model, datamodule, config):
+    def __init__(self, model, datamodule, task, config):
         self.model = model
         self.datamodule = datamodule
+        self.task = task
         self.config = config
         self.training_history = []
 
     def train(self):
         """Train the Random Forest model."""
         LOGGER.info("Loading training data in tabular format...")
-        X_train, y_train = self.datamodule.load_tabular_data("training")
+        X_train, y_train = self.datamodule.load_tabular_data("training", task=self.task)
 
         LOGGER.info("Loading validation data in tabular format...")
         X_val, y_val = self.datamodule.load_tabular_data("validation")
@@ -55,10 +56,7 @@ class RandomForestTrainer:
         LOGGER.info("Starting Random Forest training...")
         start_time = time.time()
 
-        print("SHAPE :: ", X_train.shape)
         self.model.fit(X_train, y_train)
-
-        print(X_train.shape, X_val.shape)
 
         training_time = time.time() - start_time
         LOGGER.info(f"Training completed in {training_time:.2f} seconds")
@@ -67,16 +65,7 @@ class RandomForestTrainer:
         train_pred = self.model.predict(X_train)
         val_pred = self.model.predict(X_val)
 
-        train_mse = np.mean((train_pred.squeeze() - y_train) ** 2)
-        val_mse = np.mean((val_pred.squeeze() - y_val) ** 2)
-
-        LOGGER.info(
-            f"Final metrics - Train MSE: {train_mse:.6f}, Val MSE: {val_mse:.6f}"
-        )
-
         return {
-            "train_mse": float(train_mse),
-            "val_mse": float(val_mse),
             "training_time": training_time,
             "num_parameters": self.model.num_parameters,
         }
@@ -111,6 +100,7 @@ def main():
         full_config = tomli.load(f)
     rf_config = full_config.get("random_forest", {})
 
+
     LOGGER.info(f"Loaded compute config from: {compute_config_path}")
     LOGGER.info(f"Random Forest config: {rf_config}")
 
@@ -122,7 +112,10 @@ def main():
     if max_depth == "null":
         max_depth = None
 
+    task = rf_config.get("task", "precipitation_estimation")
+
     rf_model = create_random_forest_retrieval(
+        task=task,
         n_estimators=rf_config.get("n_estimators", 100),
         max_depth=max_depth,
         min_samples_split=rf_config.get("min_samples_split", 2),
@@ -133,11 +126,11 @@ def main():
         n_jobs=rf_config.get("n_jobs", -1),
     )
 
-    LOGGER.info(f"Created Random Forest model")
+    LOGGER.info(f"Created Random Forest model for {task}.")
 
     # Create trainer and train
     trainer = RandomForestTrainer(
-        model=rf_model, datamodule=datamodule, config=rf_config
+        model=rf_model, task=task, datamodule=datamodule, config=rf_config
     )
 
     # Train the model
@@ -150,7 +143,11 @@ def main():
     output_path.mkdir(exist_ok=True)
 
     # Create experiment name based on dataset configuration and Random Forest configuration
-    dataset_prefix = config.get_experiment_name_prefix("random_forest")
+    if task == "precipitation_estimation":
+        dataset_prefix = config.get_experiment_name_prefix("random_forest")
+    else:
+        dataset_prefix = config.get_experiment_name_prefix(f"random_forest_{task}")
+        
     config_parts = [
         f"n{rf_config.get('n_estimators', 100)}",
         (
@@ -185,49 +182,12 @@ def main():
                 "model_path": str(model_path),
                 "satrain_config": config.to_dict(),
                 "random_forest_config": rf_config,
-                "training_results": results,
                 "model": rf_model,
             },
             f,
         )
 
     LOGGER.info(f"Model saved to {model_path} and {full_model_path}")
-
-    # Save training metrics to NetCDF
-    LOGGER.info("Saving training metrics...")
-    netcdf_dir = Path("netcdf_metrics")
-    netcdf_dir.mkdir(exist_ok=True)
-
-    # Create metrics dataset
-    metrics_data = xr.Dataset(
-        {
-            "train_mse": (["epoch"], [results["train_mse"]]),
-            "val_mse": (["epoch"], [results["val_mse"]]),
-        },
-        coords={"epoch": [0]},
-    )
-
-    metadata = {
-        "experiment": dataset_prefix,
-        "experiment_name": experiment_name,
-        "version": f"v{version}",
-        "model_type": "RandomForest",
-        "num_parameters": results["num_parameters"],
-        "training_time": results["training_time"],
-    }
-
-    # Convert rf_config values to NetCDF-compatible types
-    for key, value in rf_config.items():
-        if isinstance(value, bool):
-            metadata[key] = str(value)
-        else:
-            metadata[key] = value
-
-    metrics_data.attrs.update(metadata)
-
-    output_path = netcdf_dir / f"{experiment_name}.nc"
-    metrics_data.to_netcdf(output_path)
-    LOGGER.info(f"Metrics saved to {output_path}")
 
 
 if __name__ == "__main__":
