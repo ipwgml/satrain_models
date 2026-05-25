@@ -270,6 +270,16 @@ class EfficientNetV2Regression(nn.Module):
         
         return out
 
+    @property
+    def num_parameters(self) -> int:
+        """Return the total number of parameters in the model."""
+        return sum(p.numel() for p in self.parameters())
+
+    @property
+    def num_trainable_parameters(self) -> int:
+        """Return the number of trainable parameters in the model."""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
 
 def create_efficient_net_v2(n_channels: int, n_outputs: int = 1, 
                            model_size: str = 'small', pretrained: bool = True) -> nn.Module:

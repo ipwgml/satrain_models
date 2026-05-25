@@ -114,6 +114,8 @@ def main():
         "approach": compute_config.approach,
         "model_size": model_config.model_size,
         "pretrained": str(model_config.pretrained),
+        "num_parameters": model.num_parameters,
+        "num_trainable_parameters": model.num_trainable_parameters,
     }
     output_path = netcdf_dir / (experiment_name + ".nc")
     tensorboard_to_netcdf(
