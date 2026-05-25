@@ -137,8 +137,18 @@ def main():
         )
         results.append(evaluator.get_results())
 
+
     results = xr.concat(results, dim="domain")
     results["domain"] = domains
+
+
+    model_metadata = {
+        "experiment_name": experiment_name,
+        # Model complexity metrics
+        "num_parameters": encoder_decoder_model.num_parameters,
+        "num_trainable_parameters": encoder_decoder_model.num_trainable_parameters,
+    }
+    results.attrs.update(model_metadata)
 
     output_path = Path(".") / "test_results"
     output_path.mkdir(exist_ok=True)
