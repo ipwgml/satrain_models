@@ -98,15 +98,15 @@ class DenseEncoderDecoder(nn.Module):
         self.decoders = nn.ModuleList()
         for dec_ind in range(len(channels) - 1):
             decoder = nn.ModuleList()
-            for lvl_idx in range(n_stages - 1 - dec_ind):
+            for lvl_idx in range(dec_ind + 1, 0, -1):
 
-                chans_lvl = channels[lvl_idx]
-                chans_dense = (dec_ind + 1) * chans_lvl
-                if lvl_idx == 0:
+                chans_lvl = channels[lvl_idx - 1]
+                chans_dense = (2 + dec_ind - lvl_idx) * chans_lvl
+                if lvl_idx == 1:
                     chans_dense += in_channels
-                chans_up = channels[lvl_idx + 1]
+                chans_up = channels[lvl_idx]
                 chans_in = chans_dense + chans_up
-                depth_lvl = depths[lvl_idx]
+                depth_lvl = depths[lvl_idx - 1]
                 stage = DecoderStage(
                     in_channels=chans_in,
                     out_channels=chans_lvl,
@@ -128,7 +128,6 @@ class DenseEncoderDecoder(nn.Module):
             mode="bilinear"
         )
 
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through the encoder-decoder network.
@@ -146,6 +145,7 @@ class DenseEncoderDecoder(nn.Module):
 
         for decoder in self.decoders:
             for stage_ind, stage in enumerate(decoder):
+                stage_ind = len(decoder) - stage_ind - 1
                 dense = skip_connections[stage_ind]
                 up = self.upsample(skip_connections[stage_ind + 1][-1])
                 y = stage(torch.cat(dense + [up], 1))
