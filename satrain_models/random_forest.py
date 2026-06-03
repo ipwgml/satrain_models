@@ -289,6 +289,24 @@ class RandomForestRetrieval:
 
         return getattr(self.model, "oob_score_", None)
 
+    def get_retrieval_fn(self, retrieval_input):
+        """
+        Create retrieval function for random forest model.
+        """
+        def retrieval_fn(input_data: xr.Dataset) -> xr.Dataset:
+            """
+            Run retrieval on input data.
+            """
+            features = []
+            for inpt in retrieval_input:
+                features += list(inpt.features.keys())
+            inpt = np.concatenate([input_data[var].data for var in features], axis=1)
+            pred = self.predict(inpt.T).squeeze()
+            results = xr.Dataset({"surface_precip": (("batch",), pred)})
+            return results
+
+        return retrieval_fn
+
 
 def create_random_forest_retrieval(
     task: str,

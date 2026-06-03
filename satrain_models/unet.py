@@ -4,12 +4,17 @@ satrain_models.unet
 
 Provides an implementation of a basic PyTorch UNet.
 """
+from pathlib import Path
+from typing import Union
 
 from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from .config import SatRainConfig, ComputeConfig
+from .datamodule import SatRainDataModule
 
 
 class DoubleConv(nn.Module):
@@ -153,3 +158,28 @@ def create_unet(n_channels=3, n_outputs=1, bilinear=False):
         UNet: UNet model instance
     """
     return UNet(n_channels=n_channels, n_outputs=n_outputs, bilinear=bilinear)
+
+
+def load_model(model_path: Union[str, Path]):
+
+    model_path = Path(model_path)
+
+    loaded = torch.load(
+        model_path,
+        map_location=torch.device("cpu"),
+        weights_only=True
+    )
+    state = loaded["state_dict"]
+    # Remove model prefix for checkpoint files.
+    if model_path.suffix == ".ckpt":
+        state = {key[6:]: val for key, val in state.items()}
+
+    satrain_config = SatRainConfig(**loaded["satrain_config"])
+    satrain_config.retrieval_input[0].include_angles = False
+
+    # Create model
+    unet_model = create_unet(
+        n_channels=satrain_config.num_features, n_outputs=1, bilinear=True
+    )
+    unet_model.load_state_dict(state)
+    return unet_model

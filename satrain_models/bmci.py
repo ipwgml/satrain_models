@@ -296,3 +296,28 @@ class BMCI:
                 results.append(task.result())
 
         return np.concatenate(results)
+
+
+    def create_retrieval_fn(self, satrain_config, datamodule):
+        """
+        Create retrieval function for BMCI model.
+        """
+
+        def retrieval_fn(input_data: xr.Dataset) -> xr.Dataset:
+            """
+            Run retrieval on input data.
+            """
+            # The BMCI model was trained on tabular data with features per sample.
+            # For evaluation, we need to extract the same features from spatial data.
+
+            # Extract features based on what was used in training (GMI channels)
+            retrieval_input = datamodule._get_retrieval_input()
+            features = []
+            for inpt in retrieval_input:
+                features += list(inpt.features.keys())
+            inpt = np.concatenate([input_data[var].data for var in features], axis=1)
+            pred = self.predict(inpt.T).squeeze()
+            results = xr.Dataset({"surface_precip": (("batch",), pred)})
+            return results
+
+        return retrieval_fn

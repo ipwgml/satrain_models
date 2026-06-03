@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .config import SatRainConfig, ComputeConfig
+
 # Try to import TOML library (tomllib in Python 3.11+, tomli for older versions)
 try:
     import tomllib
@@ -151,3 +153,40 @@ def create_fully_connected(input_dim=3, hidden_dims=[16, 8, 4], output_dim=1, dr
         output_dim=output_dim,
         dropout=dropout,
     )
+
+
+def load_model(model_path: Union[str, Path]) -> nn.Module:
+    """
+    Load fully-connected model from file.
+
+    Args:
+        model_path: The path pointing to the stored model.
+
+    Return:
+        The loaded model as a PyTorch module.
+    """
+    model_path = Path(model_path)
+
+    loaded = torch.load(
+        model_path,
+        map_location=torch.device("cpu"),
+        weights_only=True
+    )
+    state = loaded["state_dict"]
+    # Remove model prefix for checkpoint files.
+    if model_path.suffix == ".ckpt":
+        state = {key[6:]: val for key, val in state.items()}
+
+    satrain_config = SatRainConfig(**loaded["satrain_config"])
+    satrain_config.retrieval_input[0].include_angles = False
+
+    model_config = loaded.get("model_config", None)
+    model_config = FullyConnectedConfig(**model_config)
+    # Create model
+    fully_connected_model = create_fully_connected(
+        input_dim=satrain_config.num_features,
+        hidden_dims=model_config.hidden_dims,
+        dropout=model_config.dropout
+    )
+    fully_connected_model.load_state_dict(state)
+    return fully_connected_model
