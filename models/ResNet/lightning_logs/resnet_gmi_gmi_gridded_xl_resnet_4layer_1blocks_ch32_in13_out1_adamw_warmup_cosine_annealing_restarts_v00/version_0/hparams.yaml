@@ -1,0 +1,31 @@
+approach: adamw_warmup_cosine_annealing_restarts
+learning_rate: null
+model_config:
+  base_channels: 32
+  blocks_per_layer: 1
+  n_channels: 13
+  n_layers: 4
+  n_outputs: 1
+name: resnet_gmi_gmi_gridded_xl_resnet_4layer_1blocks_ch32_in13_out1
+satrain_config:
+  base_sensor: gmi
+  format: spatial
+  geometry: gridded
+  hidden_layer:
+  - 8
+  - 2
+  retrieval_input:
+  - channels: null
+    include_angles: false
+    name: gmi
+    nan: -1.5
+    normalize: minmax
+  subset: xl
+  target_config:
+    max_gcf: null
+    min_gcf: null
+    min_rqi: 0.5
+    min_valid_fraction: 0.5
+    no_hail: false
+    no_snow: false
+    target: surface_precip
