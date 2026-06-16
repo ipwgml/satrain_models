@@ -952,6 +952,67 @@ class SwinAttention(nn.Module):
         return x
 
 
+def EfficientNetV2(
+        in_channels: int,
+        out_channels: int,
+        downsample: Optional[int],
+        stage_ind: int,
+        block_ind: int
+) -> nn.Module:
+    """
+    Block factory for EfficientNetV2 blocks using the torchvision implementation.
+
+    Args:
+        in_channels: Number of incoming channels in block.
+        out_channels: Number of outgoing channels from block.
+        downsample: The downsampling to apply in the first block layer.
+        stage_ind: The index of the encoder of decoder stage.
+        block_ind: The index of the block in the current stage.
+
+    Return:
+        A EfficientNet-V2 block.
+    """
+    from torchvision.models.efficientnet import (
+        FusedMBConv,
+        FusedMBConvConfig,
+        MBConv,
+        MBConvConfig
+    )
+
+    # Expand ratios from torchvision EfficientNetV2 configurations
+    expand_ratios = [1, 4, 4, 4, 6, 6]
+    stride = 1 if downsample is None else downsample
+    if isinstance(stride, tuple):
+        stride = stride[0]
+    if stage_ind < 3:
+        return FusedMBConv(
+            FusedMBConvConfig(
+                expand_ratios[stage_ind],
+                3,
+                stride=stride,
+                input_channels=in_channels,
+                out_channels=out_channels,
+                num_layers=1
+            ),
+            stochastic_depth_prob=0.2,
+            norm_layer=nn.BatchNorm2d,
+        )
+    else:
+        return MBConv(
+            MBConvConfig(
+                expand_ratios[stage_ind],
+                3,
+                stride=stride,
+                input_channels=in_channels,
+                out_channels=out_channels,
+                num_layers=1
+            ),
+            stochastic_depth_prob=0.2,
+            norm_layer=nn.BatchNorm2d,
+        )
+
+
+
 class EncoderStage(nn.Module):
     """
     An encoder stage containing multiple convolution blocks.
@@ -1370,4 +1431,5 @@ BLOCK_FACTORIES = {
     "ResNeXtBlock": ResNeXtBlock,
     "InvertedBottleneck": InvertedBottleneck,
     "SwinAttention": SwinAttention,
+    "EfficientNetV2": EfficientNetV2,
 }
