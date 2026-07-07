@@ -73,7 +73,7 @@ class XGBoostRetrieval:
 
         # XGBoost parameters
         if self.task == "precipitation_estimation":
-            objective = "reg:squared"
+            objective = "reg:squarederror"
         elif self.task.lower() == "precipitation_detection":
             objective = "binary:logistic"
         elif self.task.lower() == "heavy_precipitation_detection":
