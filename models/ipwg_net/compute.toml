@@ -1,0 +1,19 @@
+# === Hardware Configuration ===
+accelerator = "cpu"
+devices = 1
+precision = "bf16"
+
+# === Training Configuration ===
+max_epochs = 100
+batch_size = 16
+approach = "sgd_warmup_cosine_annealing_restarts"
+
+# === Data Loading ===
+num_workers = 4
+pin_memory = true
+persistent_workers = false
+
+# === Training Control ===
+accumulate_grad_batches = 1
+log_every_n_steps = 1
+check_val_every_n_epoch = 1
