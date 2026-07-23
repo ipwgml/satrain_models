@@ -255,14 +255,14 @@ class ComputeConfig(SatRainConfig):
 
     def __init__(self, **kwargs):
         """Parse compute configuration from keyword arguments."""
-        self.approach = kwargs.pop("approach")
+        self.approach = kwargs.pop("approach", "adamw_warmup_cosine_annealing_restarts")
         self.learning_rate = kwargs.pop("learning_rate", None)
-        self.max_epochs = kwargs.pop("max_epochs")
-        self.batch_size = kwargs.pop("batch_size")
-        self.num_workers = kwargs.pop("num_workers")
-        self.accelerator = kwargs.pop("accelerator")
-        self.devices = kwargs.pop("devices", {})
-        self.precision = kwargs.pop("precision", {})
+        self.max_epochs = kwargs.pop("max_epochs", 100)
+        self.batch_size = kwargs.pop("batch_size", 8)
+        self.num_workers = kwargs.pop("num_workers", 4)
+        self.accelerator = kwargs.pop("accelerator", "cuda")
+        self.devices = kwargs.pop("devices", 0)
+        self.precision = kwargs.pop("precision", "float32")
 
         self.pin_memory = kwargs.pop("pin_memory", True)
         self.persistent_workers = kwargs.pop("persistent_workers", False)
