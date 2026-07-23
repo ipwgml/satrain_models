@@ -11,6 +11,7 @@ from math import sqrt
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1401,7 +1402,19 @@ def load_model(model_path: Union[str, Path]) -> EncoderDecoder:
     """
     model_path = Path(model_path)
 
-    loaded = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
+    numpy_types = [
+        np.core.multiarray._reconstruct,
+        np.ndarray,
+        np.dtype,
+        np.dtypes.Int64DType
+    ]
+
+    with torch.serialization.safe_globals(numpy_types):
+        loaded = torch.load(
+            model_path,
+            map_location=torch.device("cpu"),
+            weights_only=True
+        )
     state = loaded["state_dict"]
     # Remove model prefix for checkpoint files.
     if model_path.suffix == ".ckpt":
