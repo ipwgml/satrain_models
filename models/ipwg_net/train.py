@@ -87,8 +87,8 @@ def main():
 
     # Create experiment name that includes dataset configuration
     dataset_prefix = config.get_experiment_name_prefix("encoder_decoder")
-    full_experiment_name = f"{dataset_prefix}_{model_config.model_name}"
-    
+    full_experiment_name = f"ipwg_net_{dataset_prefix}" 
+
     # Create Lightning module with custom name
     lightning_module = SatRainEstimationModule(
         model=encoder_decoder_model,

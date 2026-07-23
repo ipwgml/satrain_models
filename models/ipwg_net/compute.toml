@@ -1,12 +1,12 @@
 # === Hardware Configuration ===
-accelerator = "cpu"
-devices = 1
+accelerator = "cuda"
+devices = 0
 precision = "bf16"
 
 # === Training Configuration ===
 max_epochs = 100
 batch_size = 16
-approach = "sgd_warmup_cosine_annealing_restarts"
+approach = "adamw_warmup_cosine_annealing_restarts"
 
 # === Data Loading ===
 num_workers = 4
